@@ -1,0 +1,17 @@
+
+image: node:latest
+
+# This job builds the Vite app and moves it to the 'public' folder for GitLab Pages
+pages:
+  stage: deploy
+  script:
+    - npm install
+    - npm run build
+    - rm -rf public
+    - mv dist public
+  artifacts:
+    paths:
+      - public
+  only:
+    - main
+    - master

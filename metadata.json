@@ -1,0 +1,8 @@
+{
+  "name": " phonk-dev-portal",
+  "description": "Internal developer-only portal for high-performance browser game testing and AI-driven prototyping. strictly authenticated access.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
