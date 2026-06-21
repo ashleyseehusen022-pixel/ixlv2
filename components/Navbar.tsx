@@ -53,10 +53,10 @@ export const Navbar: React.FC<NavbarProps> = ({
           onClick={() => onPageChange(Page.Home)}
         >
           <div className="w-10 h-8 md:w-12 md:h-10 bg-green-600 rounded-sm flex items-center justify-center group-hover:skew-x-[-12deg] transition-transform shadow-[0_0_15px_rgba(34,197,94,0.4)]">
-            <span className="text-yellow-400 text-xs md:text-base font-black italic tracking-tighter">PHK</span>
+            <span className="text-yellow-400 text-xs md:text-base font-black italic tracking-tighter">IXL</span>
           </div>
           <span className="hidden sm:inline text-base md:text-xl font-black italic tracking-tighter bg-clip-text text-transparent bg-gradient-to-r from-green-400 via-yellow-400 to-blue-500 uppercase phonk-text">
-            PHONKPLAYLIST
+            ixlv2.net
           </span>
         </div>
 

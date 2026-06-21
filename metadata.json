@@ -1,5 +1,5 @@
 {
-  "name": " phonk-dev-portal",
+  "name": "ixlv2.net",
   "description": "Internal developer-only portal for high-performance browser game testing and AI-driven prototyping. strictly authenticated access.",
   "requestFramePermissions": [
     "camera",
