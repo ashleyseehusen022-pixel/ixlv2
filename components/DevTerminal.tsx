@@ -378,7 +378,8 @@ export const DevTerminal: React.FC<DevTerminalProps> = ({ devId = '' }) => {
         if (target === 'google') window.location.href = 'https://www.google.com';
         else if (target === 'classroom') window.location.href = 'https://classroom.google.com';
         else if (target === 'docs') window.location.href = 'https://docs.google.com';
-        else addLog('ERROR: UNKNOWN CLOAK TARGET. USE (google|classroom|docs)', 'error');
+        else if (target === 'clever') window.location.href = 'https://clever.com/login';
+        else addLog('ERROR: UNKNOWN CLOAK TARGET. USE (google|classroom|docs|clever)', 'error');
         break;
 
       case '/spoof':
