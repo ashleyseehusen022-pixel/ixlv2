@@ -430,6 +430,30 @@ export const DevTerminal: React.FC<DevTerminalProps> = ({ devId = '' }) => {
     audio.playSuccess();
   };
 
+  const isAuthorized = devId.toUpperCase() === 'JAXYN120815' || adminList.map(a => a.toUpperCase()).includes(devId.toUpperCase());
+
+  if (!isAuthorized) {
+    return (
+      <div className="max-w-xl mx-auto py-20 px-6 text-center animate-fadeIn">
+        <div className="w-24 h-24 bg-red-600/10 rounded-full border-4 border-red-500 flex items-center justify-center mx-auto mb-8 shadow-[0_0_50px_rgba(239,68,68,0.3)] animate-pulse">
+          <svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="text-red-500">
+            <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+          </svg>
+        </div>
+        <h1 className="text-4xl font-black italic text-red-500 mb-4 tracking-tighter uppercase phonk-text animate-shake">UNAUTHORIZED TERMINAL ACCESS</h1>
+        <p className="text-gray-400 font-mono text-xs leading-relaxed mb-8">
+          [SECURITY ALARM] ACCESS DENIED FOR ACTIVE DEV_ID: <span className="text-red-400 underline">{devId || 'GUEST_OVERRIDE'}</span>. ONLY VERIFIED SYSTEM ADMINISTRATORS ENCRYPTED IN THE CENTRAL REGISTRY CAN INITIATE UPLINKS.
+        </p>
+        <div className="bg-red-950/20 border-2 border-red-500/20 p-4 rounded mb-8 text-[10px] font-mono text-gray-500 leading-normal text-left">
+          <div>&gt; HOST SYSTEM INTEL: ixlv2.net Kernel 5.4</div>
+          <div>&gt; USER PRIVILEGE: GUEST_READONLY_REJECT</div>
+          <div>&gt; DIRECTIVE: Contact root administrator 'Jaxyn' to authorize your ID station.</div>
+        </div>
+      </div>
+    );
+  }
+
   if (isServerDown) {
     return (
       <div className="max-w-4xl mx-auto py-20 px-4 text-center animate-pulse">

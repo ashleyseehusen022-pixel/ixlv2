@@ -11,6 +11,7 @@ interface NavbarProps {
   isDevMode?: boolean;
   isPremium?: boolean;
   onGoPremium?: () => void;
+  isAuthorizedAdmin?: boolean;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ 
@@ -21,7 +22,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   onNewTab,
   isDevMode = false,
   isPremium = false,
-  onGoPremium
+  onGoPremium,
+  isAuthorizedAdmin = false
 }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
@@ -40,7 +42,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     { id: Page.Deploy, label: 'GITHUB_HUB' },
   ];
 
-  if (isDevMode) {
+  if (isDevMode && isAuthorizedAdmin) {
     navItems.push({ id: Page.DevTerminal, label: 'ROOT_TERM' });
     navItems.push({ id: Page.AdminConsole, label: 'ADMIN_CMD' });
   }

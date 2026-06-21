@@ -83,11 +83,23 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({ devId = '' }) => {
   }, [overrides]);
 
   const handleCommand = (raw: string) => {
-    const input = raw.trim();
-    if (!input) return;
+    const originalInput = raw.trim();
+    if (!originalInput) return;
     
-    addLog(input, 'CMD', '#fff');
-    const parts = input.split(' ');
+    addLog(originalInput, 'CMD', '#fff');
+
+    // Parse optional /cmd prefix and normalize commands
+    let processed = originalInput;
+    if (processed.toLowerCase().startsWith('/cmd')) {
+      processed = processed.slice(4).trim();
+    }
+    
+    // Ensure the processed instruction starts with '/' to match standard command structure
+    if (processed && !processed.startsWith('/')) {
+      processed = '/' + processed;
+    }
+
+    const parts = processed.split(' ');
     const cmd = parts[0].toLowerCase();
     const args = parts.slice(1);
 
@@ -101,7 +113,8 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({ devId = '' }) => {
         addLog('/theme [color] - Set console accent color', 'SYS');
         addLog('/clear - Clear console buffer', 'SYS');
         addLog('/nuke - Global data wipe', 'ERR');
-        addLog('/grantadmin [user] [devid] [passkey] - Delegate admin privileges', 'SYS');
+        addLog('/grantadmin [user] - Delegate admin privileges', 'SYS');
+        addLog('/takeawayadmin [user] - Revoke admin privileges', 'SYS');
         addLog('/admins - List all authorized administrators', 'OK');
         addLog('--- ADVANCED CMDs ---', 'SYS', '#fbbf24');
         addLog('/matrix - Toggle digital rain protocol', 'OK');
@@ -119,24 +132,52 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({ devId = '' }) => {
       case '/grantadmin':
       case '/giveadmin': {
         if (args.length === 0) {
-          addLog('USAGE: /grantadmin <username> [jaxyn_dev_id] [jaxyn_passkey]', 'ERR');
+          addLog('USAGE: /grantadmin <username>', 'ERR');
           audio.playError();
           break;
         }
         const targetUser = args[0];
-        const isJaxynActive = devId.toUpperCase() === 'JAXYN120815';
-        const hasPassedCreds = args[1]?.toUpperCase() === 'JAXYN120815' && args[2]?.toUpperCase() === 'JAXYN';
+        const normalizedTarget = targetUser.toUpperCase();
 
-        if (isJaxynActive || hasPassedCreds) {
-          if (!adminList.includes(targetUser)) {
-            setAdminList(prev => [...prev, targetUser]);
-          }
-          addLog(`[ADMIN AUTHORITY] SUCCESS: PRIVILEGES INJECTED FOR USER '${targetUser}'`, 'OK', '#22c55e');
+        if (normalizedTarget === 'JAXYN120815' || normalizedTarget === 'JAXYN') {
+          addLog('[ADMIN AUTHORITY] ERROR: RE-DELEGATING THE GLOBAL ROOT IS REDUNDANT.', 'ERR');
+          audio.playError();
+          break;
+        }
+
+        if (!adminList.map(a => a.toUpperCase()).includes(normalizedTarget)) {
+          setAdminList(prev => [...prev, targetUser]);
+        }
+        addLog(`[ADMIN AUTHORITY] SUCCESS: PRIVILEGES INJECTED FOR USER '${targetUser.toUpperCase()}'`, 'OK', '#22c55e');
+        audio.playSuccess();
+        break;
+      }
+
+      case '/takeawayadmin':
+      case '/revokeadmin':
+      case '/removeadmin':
+      case '/takeaway': {
+        if (args.length === 0) {
+          addLog('USAGE: /takeawayadmin <username>', 'ERR');
+          audio.playError();
+          break;
+        }
+        const targetUser = args[0];
+        const normalizedTarget = targetUser.toUpperCase();
+
+        if (normalizedTarget === 'JAXYN120815' || normalizedTarget === 'JAXYN') {
+          addLog('ACCESS REFUSED: CANNOT REVOKE PERMANENT ROOT OWNER CREDENTIALS.', 'ERR', '#ef4444');
+          audio.playError();
+          break;
+        }
+
+        const exists = adminList.some(a => a.toUpperCase() === normalizedTarget);
+        if (exists) {
+          setAdminList(prev => prev.filter(user => user.toUpperCase() !== normalizedTarget));
+          addLog(`[ADMIN AUTHORITY] SUCCESS: REVOKED ADMINISTRATOR HOST ACCESS FOR '${targetUser.toUpperCase()}'`, 'OK', '#ef4444');
           audio.playSuccess();
         } else {
-          addLog('ACCESS REFUSED: SECURE KERNEL ENCRYPTED.', 'ERR', '#ef4444');
-          addLog("ONLY ROOT USER 'JAXYN120815' MIGHT DELEGATE ADMINISTRATIVE CAPABILITIES.", 'ERR');
-          addLog('SPECIFY MY CREDENTIALS: /grantadmin <user> <my_dev_id> <my_passkey>', 'SYS', accentColor);
+          addLog(`[ADMIN STATIONS] ERROR: USER '${targetUser.toUpperCase()}' IS NOT AN ACTIVE DELEGATED ADMINISTRATOR.`, 'ERR');
           audio.playError();
         }
         break;
@@ -273,6 +314,30 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({ devId = '' }) => {
       addLog('INVALID JSON FORMAT', 'ERR');
     }
   };
+
+  const isAuthorized = devId.toUpperCase() === 'JAXYN120815' || adminList.map(a => a.toUpperCase()).includes(devId.toUpperCase());
+
+  if (!isAuthorized) {
+    return (
+      <div className="max-w-xl mx-auto py-20 px-6 text-center animate-fadeIn">
+        <div className="w-24 h-24 bg-purple-600/10 rounded-full border-4 border-purple-500 flex items-center justify-center mx-auto mb-8 shadow-[0_0_50px_rgba(168,85,247,0.3)] animate-pulse">
+          <svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="text-purple-500">
+            <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+          </svg>
+        </div>
+        <h1 className="text-4xl font-black italic text-purple-500 mb-4 tracking-tighter uppercase phonk-text animate-shake">UNAUTHORIZED ADMIN ACCESS</h1>
+        <p className="text-gray-400 font-mono text-xs leading-relaxed mb-8">
+          [SECURITY ENCRYPTION OVERRIDE] ACCESS DENIED FOR ACTIVE DEV_ID: <span className="text-purple-400 underline">{devId || 'GUEST_OVERRIDE'}</span>. ONLY VERIFIED SYSTEM ADMINISTRATORS ENCRYPTED IN THE CENTRAL REGISTRY CAN ACCESS THE ADMIN OVERRIDES AND LOGS.
+        </p>
+        <div className="bg-purple-950/20 border-2 border-purple-500/20 p-4 rounded mb-8 text-[10px] font-mono text-gray-500 leading-normal text-left">
+          <div>&gt; HOST SYSTEM INTEL: ixlv2.net Admin Panel</div>
+          <div>&gt; USER PRIVILEGE: GUEST_READONLY_REJECT</div>
+          <div>&gt; DIRECTIVE: Request authorization from root user Jaxyn.</div>
+        </div>
+      </div>
+    );
+  }
 
   if (isOffline) {
     return (

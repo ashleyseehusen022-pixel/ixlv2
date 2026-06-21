@@ -17,13 +17,30 @@ import { downloadProjectZip } from './services/exportService';
  * High-Security Authentication Gateway
  * Exclusively for Verified Developers
  */
-const AuthLock: React.FC<{ onUnlock: (isDev: boolean, devId: string) => void }> = ({ onUnlock }) => {
+const AuthLock: React.FC<{ onUnlock: (isDev: boolean, devId: string, bypass?: boolean) => void }> = ({ onUnlock }) => {
+  const [mode, setMode] = useState<'login' | 'register'>('login');
+  
+  // Login states
   const [devId, setDevId] = useState('');
   const [passKey, setPassKey] = useState('');
   const [step, setStep] = useState<1 | 2>(1);
+  
+  // Registration states
+  const [regUsername, setRegUsername] = useState('');
+  const [regPasskey, setRegPasskey] = useState('');
+
   const [error, setError] = useState(false);
   const [isBypassing, setIsBypassing] = useState(false);
   const [bootLogs, setBootLogs] = useState<string[]>([]);
+
+  // Registration Live Checker Calculations
+  const isUsernameLengthValid = regUsername.length >= 4 && regUsername.length <= 15;
+  const isUsernameFormatValid = /^[a-zA-Z0-9_]+$/.test(regUsername);
+  const isPasskeyLengthValid = regPasskey.length >= 6;
+  const isPasskeyCaseValid = /[A-Z]/.test(regPasskey);
+  const isPasskeyNumValid = /\d/.test(regPasskey);
+
+  const isRegistrationValid = isUsernameLengthValid && isUsernameFormatValid && isPasskeyLengthValid && isPasskeyCaseValid && isPasskeyNumValid;
 
   useEffect(() => {
     const logs = [
@@ -31,7 +48,7 @@ const AuthLock: React.FC<{ onUnlock: (isDev: boolean, devId: string) => void }> 
       "FETCHING HARDWARE SIGNATURE...",
       "MAPPING INTERNAL ASSETS...",
       "VERIFYING DEVELOPER ENVIRONMENT...",
-      "WAITING FOR CREDENTIALS..."
+      "READY FOR UPLINK SECURITY HANDSHAKE."
     ];
     let i = 0;
     const interval = setInterval(() => {
@@ -50,21 +67,99 @@ const AuthLock: React.FC<{ onUnlock: (isDev: boolean, devId: string) => void }> 
     const VALID_DEV_ID = "JAXYN120815";
     const VALID_PASS = "JAXYN";
 
+    // Load admin list to check if user has delegated root/admin permissions
+    let currentAdmins: string[] = [];
+    try {
+      const stored = localStorage.getItem('phonk_granted_admins');
+      if (stored) currentAdmins = JSON.parse(stored);
+    } catch {}
+
+    // Load registered custom accounts
+    let registeredUsers: Record<string, string> = {};
+    try {
+      const storedUsers = localStorage.getItem('phonk_registered_users');
+      if (storedUsers) registeredUsers = JSON.parse(storedUsers);
+    } catch {}
+
+    const isTargetAdmin = currentAdmins.map(u => u.toUpperCase()).includes(devId.toUpperCase());
+    const matchedUserKey = Object.keys(registeredUsers).find(k => k.toUpperCase() === devId.toUpperCase());
+    const registeredPass = matchedUserKey ? registeredUsers[matchedUserKey] : null;
+
     if (step === 1) {
-      if (devId.toUpperCase() === VALID_DEV_ID) {
+      if (devId.toUpperCase() === VALID_DEV_ID || isTargetAdmin || matchedUserKey) {
         setStep(2);
         audio.playSuccess();
       } else {
         triggerError();
       }
     } else {
-      if (passKey.toUpperCase() === VALID_PASS) {
+      const isValidDevPass = devId.toUpperCase() === VALID_DEV_ID && passKey.toUpperCase() === VALID_PASS;
+      const isValidAdminPass = isTargetAdmin && (passKey.toUpperCase() === "ADMIN" || passKey.toUpperCase() === "GUEST" || passKey.toUpperCase() === "JAXYN" || passKey.length >= 2);
+      const isValidRegisteredPass = registeredPass !== null && passKey === registeredPass;
+
+      if (isValidDevPass || isValidAdminPass || isValidRegisteredPass) {
         audio.playSuccess();
-        onUnlock(true, devId); // Grant Dev Access
+        onUnlock(true, devId, false); // Grant Dev Access (not bypassed)
       } else {
         triggerError();
       }
     }
+  };
+
+  const handleRegister = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isRegistrationValid) {
+      audio.playError();
+      return;
+    }
+
+    // Load registered users matrix
+    let currentRegistered: Record<string, string> = {};
+    try {
+      const stored = localStorage.getItem('phonk_registered_users');
+      if (stored) currentRegistered = JSON.parse(stored);
+    } catch {}
+
+    // Check if username already exists in registry
+    const userExists = Object.keys(currentRegistered).some(u => u.toUpperCase() === regUsername.toUpperCase());
+    if (userExists || regUsername.toUpperCase() === "JAXYN120815") {
+      setError(true);
+      setBootLogs(prev => [...prev, `[REGISTRY_ALARM] > ERROR: DEV_ID '${regUsername.toUpperCase()}' IS ALREADY REGISTERED.`]);
+      audio.playError();
+      setTimeout(() => setError(false), 1200);
+      return;
+    }
+
+    // Save developer settings
+    currentRegistered[regUsername] = regPasskey;
+    localStorage.setItem('phonk_registered_users', JSON.stringify(currentRegistered));
+
+    // Grant administrative credentials to bypass lock blocks
+    let currentAdmins: string[] = [];
+    try {
+      const storedAdmins = localStorage.getItem('phonk_granted_admins');
+      if (storedAdmins) currentAdmins = JSON.parse(storedAdmins);
+    } catch {}
+
+    if (!currentAdmins.map(a => a.toUpperCase()).includes(regUsername.toUpperCase())) {
+      currentAdmins.push(regUsername);
+      localStorage.setItem('phonk_granted_admins', JSON.stringify(currentAdmins));
+    }
+
+    setBootLogs(prev => [
+      ...prev,
+      `[REGISTRY] > SUCCESS: PROFILE CREATED FOR '${regUsername.toUpperCase()}'`,
+      `[REGISTRY] > INITIALIZING CENTRAL DIRECTORY ENCRYPTION...`
+    ]);
+
+    audio.playSuccess();
+    setIsBypassing(true);
+
+    // Dynamic logging progression
+    setTimeout(() => {
+      setIsBypassing(false);
+      onUnlock(true, regUsername, false); // Auto log in (not bypassed)
+    }, 1500);
   };
 
   const handleDeveloperBypass = () => {
@@ -86,7 +181,7 @@ const AuthLock: React.FC<{ onUnlock: (isDev: boolean, devId: string) => void }> 
       } else {
         clearInterval(interval);
         audio.playSuccess();
-        onUnlock(true, "JAXYN120815"); // Grant Dev Access as JAXYN120815 via bypass
+        onUnlock(true, "JAXYN120815", true); // Grant Dev Access as JAXYN120815 via bypass (bypassed = true)
       }
     }, 400);
   };
@@ -106,77 +201,182 @@ const AuthLock: React.FC<{ onUnlock: (isDev: boolean, devId: string) => void }> 
     <div className={`fixed inset-0 z-[200] bg-black flex items-center justify-center p-6 overflow-hidden transition-all duration-300 ${error ? 'bg-red-950/30' : ''}`}>
       <div className="absolute inset-0 pointer-events-none opacity-20 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.5)_50%),linear-gradient(90deg,rgba(0,255,0,0.06),rgba(255,255,0,0.02),rgba(0,255,0,0.06))] bg-[size:100%_4px,3px_100%]"></div>
       
-      <div className={`max-w-xl w-full glass p-12 border-2 relative transition-all duration-100 shadow-[0_0_80px_rgba(239,68,68,0.1)] ${
+      <div className={`max-w-xl w-full glass p-10 border-2 relative transition-all duration-100 shadow-[0_0_80px_rgba(34,197,94,0.1)] ${
         error 
           ? 'border-red-600 animate-securityGlitch bg-red-950/20 shadow-[0_0_150px_rgba(220,38,38,0.4)] ring-2 ring-red-600/30' 
-          : 'border-red-500/30 animate-fadeIn'
+          : 'border-green-500/30 animate-fadeIn'
       }`}>
-        <div className="flex items-center gap-4 mb-10 pb-6 border-b border-white/10">
-          <div className="w-12 h-12 bg-red-600 rounded-sm flex items-center justify-center animate-pulse">
-            <span className="text-white font-black text-2xl">!</span>
+        <div className="flex items-center gap-4 mb-8 pb-6 border-b border-white/10">
+          <div className="w-12 h-12 bg-green-600 rounded-sm flex items-center justify-center animate-pulse shadow-[0_0_15px_rgba(22,163,74,0.4)]">
+            <span className="text-white font-black text-2xl">⚡</span>
           </div>
           <div>
-            <h1 className="text-2xl font-black italic uppercase text-white tracking-tighter">RESTRICTED_DEV_ASSET</h1>
-            <p className="text-[9px] font-mono text-red-500 uppercase tracking-widest animate-pulse">Unauthorized access is strictly prohibited</p>
+            <h1 className="text-2xl font-black italic uppercase text-white tracking-tighter">ixlv2.net security gate</h1>
+            <p className="text-[9px] font-mono text-green-500 uppercase tracking-widest animate-pulse">encrypted central developer workstation</p>
           </div>
         </div>
 
-        <div className="font-mono text-[10px] text-green-500 mb-8 h-24 overflow-y-auto opacity-50 custom-scrollbar">
+        {/* Tab Selection */}
+        {!isBypassing && (
+          <div className="flex gap-2 border-b border-white/10 mb-6 pb-2">
+            <button
+              type="button"
+              onClick={() => { setMode('login'); setError(false); }}
+              className={`flex-1 py-1 px-3 font-mono text-[10px] font-bold uppercase transition-all tracking-wider skew-x-[-10deg] ${
+                mode === 'login' 
+                  ? 'bg-green-600/20 text-green-400 border border-green-500/50 shadow-[0_0_15px_rgba(34,197,94,0.2)]' 
+                  : 'text-gray-500 hover:text-gray-300'
+              }`}
+            >
+              [ CHANNELS_LOGIN ]
+            </button>
+            <button
+              type="button"
+              onClick={() => { setMode('register'); setError(false); }}
+              className={`flex-1 py-1 px-3 font-mono text-[10px] font-bold uppercase transition-all tracking-wider skew-x-[-10deg] ${
+                mode === 'register' 
+                  ? 'bg-blue-600/20 text-blue-400 border border-blue-500/50 shadow-[0_0_15px_rgba(59,130,246,0.2)]' 
+                  : 'text-gray-500 hover:text-gray-300'
+              }`}
+            >
+              [ REGISTER_NEW_DEV ]
+            </button>
+          </div>
+        )}
+
+        <div className="font-mono text-[9px] text-green-500 mb-6 h-20 overflow-y-auto opacity-50 custom-scrollbar leading-relaxed">
           {bootLogs.map((log, idx) => <div key={idx}>&gt; {log}</div>)}
         </div>
 
         {!isBypassing ? (
-          <form onSubmit={handleAuth} className={`space-y-6 ${error ? 'animate-shake' : ''}`}>
-            {step === 1 ? (
+          mode === 'login' ? (
+            <form onSubmit={handleAuth} className={`space-y-6 ${error ? 'animate-shake' : ''}`}>
+              {step === 1 ? (
+                <div className="space-y-2 animate-fadeIn">
+                  <label className="text-[10px] font-black italic text-gray-400 uppercase tracking-widest">DEVELOPER_ID_STATION</label>
+                  <input 
+                    type="text"
+                    value={devId}
+                    onChange={(e) => setDevId(e.target.value)}
+                    autoFocus
+                    className="w-full bg-black border-2 border-green-500/20 p-4 text-lg font-black text-white outline-none focus:border-green-600 transition-all uppercase skew-x-[-10deg]"
+                    placeholder="ENTER DEV_ID..."
+                  />
+                </div>
+              ) : (
+                <div className="space-y-2 animate-fadeIn">
+                  <label className="text-[10px] font-black italic text-green-500 uppercase tracking-widest">ROOT_PASSKEY_REQUIRED</label>
+                  <input 
+                    type="password"
+                    value={passKey}
+                    onChange={(e) => setPassKey(e.target.value)}
+                    autoFocus
+                    className="w-full bg-black border-2 border-green-500/20 p-4 text-lg font-black text-green-400 outline-none focus:border-green-600 transition-all uppercase skew-x-[-10deg]"
+                    placeholder="********"
+                  />
+                </div>
+              )}
+              
+              <div className="space-y-4">
+                <button className="w-full py-4 bg-green-600 hover:bg-white hover:text-green-600 text-white font-black italic uppercase skew-x-[-12deg] transition-all flex items-center justify-center gap-3 shadow-[0_0_15px_rgba(22,163,74,0.3)]">
+                  {step === 1 ? 'PROCEED_TO_PASSKEY' : 'INITIALIZE_INTERNAL_ARCADE'}
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="m9 18 6-6-6-6"/></svg>
+                </button>
+
+                {step === 1 && (
+                  <button 
+                    type="button"
+                    onClick={handleDeveloperBypass}
+                    className="w-full py-3 bg-black border-2 border-green-500/30 hover:border-green-500 text-green-500 text-[10px] font-black italic uppercase tracking-widest skew-x-[-12deg] transition-all flex items-center justify-center gap-2 group"
+                  >
+                    <span className="group-hover:animate-pulse">[ MOUNT_BYPASS_STATION_B ]</span>
+                    <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-ping"></div>
+                  </button>
+                )}
+              </div>
+            </form>
+          ) : (
+            <form onSubmit={handleRegister} className="space-y-5 animate-fadeIn">
               <div className="space-y-2">
-                <label className="text-[10px] font-black italic text-gray-500 uppercase tracking-widest">DEVELOPER_ID_STATION</label>
+                <label className="text-[10px] font-black italic text-gray-400 uppercase tracking-widest">PROPOSED_DEV_ID (USERNAME)</label>
                 <input 
                   type="text"
-                  value={devId}
-                  onChange={(e) => setDevId(e.target.value)}
-                  autoFocus
-                  className="w-full bg-black border-2 border-red-500/20 p-5 text-xl font-black text-white outline-none focus:border-red-600 transition-all uppercase skew-x-[-15deg]"
-                  placeholder="ENTER DEV_ID..."
+                  value={regUsername}
+                  onChange={(e) => setRegUsername(e.target.value)}
+                  className="w-full bg-black border-2 border-blue-500/20 p-3 text-base font-black text-white outline-none focus:border-blue-600 transition-all uppercase skew-x-[-10deg]"
+                  placeholder="E.G. USER_99"
                 />
               </div>
-            ) : (
-              <div className="space-y-2 animate-fadeIn">
-                <label className="text-[10px] font-black italic text-red-500 uppercase tracking-widest">ROOT_PASSKEY_REQUIRED</label>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-black italic text-gray-400 uppercase tracking-widest">PROPOSED_SECURE_PASSKEY</label>
                 <input 
                   type="password"
-                  value={passKey}
-                  onChange={(e) => setPassKey(e.target.value)}
-                  autoFocus
-                  className="w-full bg-black border-2 border-green-500/20 p-5 text-xl font-black text-green-400 outline-none focus:border-green-600 transition-all uppercase skew-x-[-15deg]"
-                  placeholder="********"
+                  value={regPasskey}
+                  onChange={(e) => setRegPasskey(e.target.value)}
+                  className="w-full bg-black border-2 border-blue-500/20 p-3 text-base font-black text-blue-400 outline-none focus:border-blue-600 transition-all skew-x-[-10deg]"
+                  placeholder="••••••••"
                 />
               </div>
-            )}
-            
-            <div className="space-y-4">
-              <button className="w-full py-5 bg-red-600 hover:bg-white hover:text-red-600 text-white font-black italic uppercase skew-x-[-12deg] transition-all flex items-center justify-center gap-3">
-                {step === 1 ? 'PROCEED_TO_PASSKEY' : 'INITIALIZE_INTERNAL_ARCADE'}
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="m9 18 6-6-6-6"/></svg>
-              </button>
 
-              {step === 1 && (
-                <button 
-                  type="button"
-                  onClick={handleDeveloperBypass}
-                  className="w-full py-3 bg-black border-2 border-green-500/30 hover:border-green-500 text-green-500 text-[10px] font-black italic uppercase tracking-widest skew-x-[-12deg] transition-all flex items-center justify-center gap-2 group"
-                >
-                  <span className="group-hover:animate-pulse">[ MOUNT_BYPASS_STATION_B ]</span>
-                  <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-ping"></div>
-                </button>
-              )}
-            </div>
-          </form>
+              {/* Requirement Indicators Container */}
+              <div className="bg-slate-950/80 border border-white/10 p-4 rounded skew-y-[-1deg] font-mono text-[10px]">
+                <div className="text-gray-400 font-bold mb-3 uppercase tracking-wider border-b border-white/10 pb-1">UPLINK SECURITY REQUIREMENTS:</div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className={`text-xs ${isUsernameLengthValid ? 'text-green-500 font-bold' : 'text-red-500'}`}>
+                      {isUsernameLengthValid ? '✓' : '✗'}
+                    </span>
+                    <span className={isUsernameLengthValid ? 'text-gray-300' : 'text-gray-500'}>DEV_ID: 4-15 CHARS</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-xs ${isUsernameFormatValid ? 'text-green-500 font-bold' : 'text-red-500'}`}>
+                      {isUsernameFormatValid ? '✓' : '✗'}
+                    </span>
+                    <span className={isUsernameFormatValid ? 'text-gray-300' : 'text-gray-500'}>Letters, numbers, _ only</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-xs ${isPasskeyLengthValid ? 'text-green-500 font-bold' : 'text-red-500'}`}>
+                      {isPasskeyLengthValid ? '✓' : '✗'}
+                    </span>
+                    <span className={isPasskeyLengthValid ? 'text-gray-300' : 'text-gray-500'}>Passkey: Min 6 characters</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-xs ${isPasskeyCaseValid ? 'text-green-500 font-bold' : 'text-red-500'}`}>
+                      {isPasskeyCaseValid ? '✓' : '✗'}
+                    </span>
+                    <span className={isPasskeyCaseValid ? 'text-gray-300' : 'text-gray-500'}>1+ Uppercase letter [A-Z]</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-xs ${isPasskeyNumValid ? 'text-green-500 font-bold' : 'text-red-500'}`}>
+                      {isPasskeyNumValid ? '✓' : '✗'}
+                    </span>
+                    <span className={isPasskeyNumValid ? 'text-gray-300' : 'text-gray-500'}>1+ Numeric digit [0-9]</span>
+                  </div>
+                </div>
+              </div>
+
+              <button 
+                type="submit"
+                disabled={!isRegistrationValid}
+                className={`w-full py-4 text-white font-black italic uppercase skew-x-[-12deg] transition-all flex items-center justify-center gap-3 shadow-[0_0_15px_rgba(59,130,246,0.3)] ${
+                  isRegistrationValid 
+                    ? 'bg-blue-600 hover:bg-white hover:text-blue-600' 
+                    : 'bg-gray-800 text-gray-500 cursor-not-allowed border border-white/5 shadow-none'
+                }`}
+              >
+                CREATE_AND_INJECT_KEY
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M12 5v14M5 12h14"/></svg>
+              </button>
+            </form>
+          )
         ) : (
           <div className="py-10 text-center space-y-4 animate-pulse">
             <h2 className="text-xl font-black italic text-green-500 uppercase tracking-tighter">HARDWARE_HANDSHAKE_IN_PROGRESS</h2>
             <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden">
               <div className="h-full bg-green-500 animate-loadingLine"></div>
             </div>
+            <p className="font-mono text-[9px] text-gray-400 mt-2">INJECTING CREDENTIALS PROTOCOL FOR TERMINAL REGISTRY...</p>
           </div>
         )}
 
@@ -272,6 +472,7 @@ export const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isDevMode, setIsDevMode] = useState<boolean>(false);
   const [activeDevId, setActiveDevId] = useState<string>('');
+  const [isBypassed, setIsBypassed] = useState<boolean>(false);
   const [isPremium, setIsPremium] = useState<boolean>(false);
   const [showPremiumModal, setShowPremiumModal] = useState<boolean>(false);
   const [currentPage, setCurrentPage] = useState<Page>(Page.Home);
@@ -312,10 +513,11 @@ export const App: React.FC = () => {
     setSettings(prev => ({ ...prev, [key]: value }));
   };
 
-  const handleUnlock = (isDev: boolean, id: string) => {
+  const handleUnlock = (isDev: boolean, id: string, bypass: boolean = false) => {
     setIsAuthenticated(true);
     setIsDevMode(isDev);
     setActiveDevId(id);
+    setIsBypassed(bypass);
     if (isDev) setIsPremium(true); // Developers are automatically premium
   };
 
@@ -330,6 +532,17 @@ export const App: React.FC = () => {
   };
 
   if (!isAuthenticated) return <AuthLock onUnlock={handleUnlock} />;
+
+  const isAuthorizedAdmin = !isBypassed && (activeDevId.toUpperCase() === 'JAXYN120815' || (() => {
+    try {
+      const stored = localStorage.getItem('phonk_granted_admins');
+      if (stored) {
+        const list: string[] = JSON.parse(stored);
+        return list.some(u => u.toUpperCase() === activeDevId.toUpperCase());
+      }
+    } catch {}
+    return false;
+  })());
 
   return (
     <div className={`min-h-screen text-white transition-all duration-500 ${settings.turboMode ? 'contrast-125 saturate-150 brightness-110' : ''}`}>
@@ -360,6 +573,7 @@ export const App: React.FC = () => {
         isPremium={isPremium}
         onGoPremium={handleGoPremium}
         onDownload={() => downloadProjectZip({ 'README.md': 'Phonk Systems Internal' })} 
+        isAuthorizedAdmin={isAuthorizedAdmin}
       />
       
       <main className="relative z-10 pt-24 pb-12 px-4 md:px-8 max-w-7xl mx-auto">
@@ -441,8 +655,8 @@ export const App: React.FC = () => {
 
         {currentPage === Page.AILab && <AIGameDev />}
         {currentPage === Page.LoveTest && <LoveLab />}
-        {currentPage === Page.DevTerminal && <DevTerminal devId={activeDevId} />}
-        {currentPage === Page.AdminConsole && <AdminConsole devId={activeDevId} />}
+        {currentPage === Page.DevTerminal && isAuthorizedAdmin && <DevTerminal devId={activeDevId} />}
+        {currentPage === Page.AdminConsole && isAuthorizedAdmin && <AdminConsole devId={activeDevId} />}
         {currentPage === Page.Deploy && <DeployPortal />}
 
         {currentPage === Page.VPN && (
