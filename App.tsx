@@ -17,7 +17,7 @@ import { downloadProjectZip } from './services/exportService';
  * High-Security Authentication Gateway
  * Exclusively for Verified Developers
  */
-const AuthLock: React.FC<{ onUnlock: (isDev: boolean) => void }> = ({ onUnlock }) => {
+const AuthLock: React.FC<{ onUnlock: (isDev: boolean, devId: string) => void }> = ({ onUnlock }) => {
   const [devId, setDevId] = useState('');
   const [passKey, setPassKey] = useState('');
   const [step, setStep] = useState<1 | 2>(1);
@@ -60,7 +60,7 @@ const AuthLock: React.FC<{ onUnlock: (isDev: boolean) => void }> = ({ onUnlock }
     } else {
       if (passKey.toUpperCase() === VALID_PASS) {
         audio.playSuccess();
-        onUnlock(true); // Grant Dev Access
+        onUnlock(true, devId); // Grant Dev Access
       } else {
         triggerError();
       }
@@ -86,7 +86,7 @@ const AuthLock: React.FC<{ onUnlock: (isDev: boolean) => void }> = ({ onUnlock }
       } else {
         clearInterval(interval);
         audio.playSuccess();
-        onUnlock(true); // Grant Dev Access
+        onUnlock(true, "JAXYN120815"); // Grant Dev Access as JAXYN120815 via bypass
       }
     }, 400);
   };
@@ -103,10 +103,14 @@ const AuthLock: React.FC<{ onUnlock: (isDev: boolean) => void }> = ({ onUnlock }
   };
 
   return (
-    <div className="fixed inset-0 z-[200] bg-black flex items-center justify-center p-6 overflow-hidden">
+    <div className={`fixed inset-0 z-[200] bg-black flex items-center justify-center p-6 overflow-hidden transition-all duration-300 ${error ? 'bg-red-950/30' : ''}`}>
       <div className="absolute inset-0 pointer-events-none opacity-20 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.5)_50%),linear-gradient(90deg,rgba(0,255,0,0.06),rgba(255,255,0,0.02),rgba(0,255,0,0.06))] bg-[size:100%_4px,3px_100%]"></div>
       
-      <div className="max-w-xl w-full glass p-12 border-2 border-red-500/30 relative animate-fadeIn shadow-[0_0_80px_rgba(239,68,68,0.1)]">
+      <div className={`max-w-xl w-full glass p-12 border-2 relative transition-all duration-100 shadow-[0_0_80px_rgba(239,68,68,0.1)] ${
+        error 
+          ? 'border-red-600 animate-securityGlitch bg-red-950/20 shadow-[0_0_150px_rgba(220,38,38,0.4)] ring-2 ring-red-600/30' 
+          : 'border-red-500/30 animate-fadeIn'
+      }`}>
         <div className="flex items-center gap-4 mb-10 pb-6 border-b border-white/10">
           <div className="w-12 h-12 bg-red-600 rounded-sm flex items-center justify-center animate-pulse">
             <span className="text-white font-black text-2xl">!</span>
@@ -193,8 +197,55 @@ const AuthLock: React.FC<{ onUnlock: (isDev: boolean) => void }> = ({ onUnlock }
           0% { transform: translateX(-100%); }
           100% { transform: translateX(100%); }
         }
+        @keyframes securityGlitch {
+          0% {
+            transform: translate(0, 0) skewX(0deg);
+            filter: hue-rotate(0deg) contrast(1) brightness(1);
+          }
+          10% {
+            transform: translate(-3px, 2px) skewX(-3deg);
+            filter: hue-rotate(80deg) contrast(1.2);
+          }
+          20% {
+            transform: translate(2px, -3px) skewX(4deg);
+            filter: hue-rotate(160deg) brightness(1.3);
+          }
+          30% {
+            transform: translate(-4px, -1px) skewX(-2deg);
+            filter: contrast(1.6);
+          }
+          40% {
+            transform: translate(3px, 3px) skewX(3deg);
+            filter: hue-rotate(240deg) saturate(1.8);
+          }
+          50% {
+            transform: translate(-2px, -2px) skewX(-4deg);
+            filter: brightness(0.8) contrast(1.4);
+          }
+          60% {
+            transform: translate(4px, -3px) skewX(5deg);
+            filter: hue-rotate(40deg) brightness(1.1);
+          }
+          70% {
+            transform: translate(-3px, 3px) skewX(-1deg);
+            filter: saturate(0.6) contrast(1.6);
+          }
+          80% {
+            transform: translate(1px, -2px) skewX(-6deg);
+            filter: hue-rotate(120deg) brightness(1.4);
+          }
+          90% {
+            transform: translate(-2px, 1px) skewX(2deg);
+            filter: contrast(2.2) saturate(1.5);
+          }
+          100% {
+            transform: translate(0, 0) skewX(0deg);
+            filter: hue-rotate(0deg) contrast(1) brightness(1);
+          }
+        }
         .animate-shake { animation: shake 0.1s ease-in-out 4; }
         .animate-loadingLine { animation: loadingLine 1.5s linear infinite; }
+        .animate-securityGlitch { animation: securityGlitch 0.15s linear infinite; }
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #166534; }
       `}</style>
@@ -220,6 +271,7 @@ const AnimatedBackground: React.FC<{ themeIndex: number; onClick: () => void }> 
 export const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isDevMode, setIsDevMode] = useState<boolean>(false);
+  const [activeDevId, setActiveDevId] = useState<string>('');
   const [isPremium, setIsPremium] = useState<boolean>(false);
   const [showPremiumModal, setShowPremiumModal] = useState<boolean>(false);
   const [currentPage, setCurrentPage] = useState<Page>(Page.Home);
@@ -260,9 +312,10 @@ export const App: React.FC = () => {
     setSettings(prev => ({ ...prev, [key]: value }));
   };
 
-  const handleUnlock = (isDev: boolean) => {
+  const handleUnlock = (isDev: boolean, id: string) => {
     setIsAuthenticated(true);
     setIsDevMode(isDev);
+    setActiveDevId(id);
     if (isDev) setIsPremium(true); // Developers are automatically premium
   };
 
@@ -388,8 +441,8 @@ export const App: React.FC = () => {
 
         {currentPage === Page.AILab && <AIGameDev />}
         {currentPage === Page.LoveTest && <LoveLab />}
-        {currentPage === Page.DevTerminal && <DevTerminal />}
-        {currentPage === Page.AdminConsole && <AdminConsole />}
+        {currentPage === Page.DevTerminal && <DevTerminal devId={activeDevId} />}
+        {currentPage === Page.AdminConsole && <AdminConsole devId={activeDevId} />}
         {currentPage === Page.Deploy && <DeployPortal />}
 
         {currentPage === Page.VPN && (

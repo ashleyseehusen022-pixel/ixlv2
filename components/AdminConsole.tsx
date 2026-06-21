@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
+import { audio } from '../services/audioService';
 
 interface LogLine {
   id: string;
@@ -9,7 +10,11 @@ interface LogLine {
   color?: string;
 }
 
-export const AdminConsole: React.FC = () => {
+interface AdminConsoleProps {
+  devId?: string;
+}
+
+export const AdminConsole: React.FC<AdminConsoleProps> = ({ devId = '' }) => {
   const [activeTab, setActiveTab] = useState<'terminal' | 'overrides' | 'state'>('terminal');
   const [logs, setLogs] = useState<LogLine[]>([]);
   const [inputValue, setInputValue] = useState('');
@@ -17,6 +22,20 @@ export const AdminConsole: React.FC = () => {
   const [isMatrixActive, setIsMatrixActive] = useState(false);
   const [sessionStartTime] = useState(Date.now());
   const [accentColor, setAccentColor] = useState('#a855f7'); 
+  
+  // Persistent list of granted administrators
+  const [adminList, setAdminList] = useState<string[]>(() => {
+    try {
+      const stored = localStorage.getItem('phonk_granted_admins');
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('phonk_granted_admins', JSON.stringify(adminList));
+  }, [adminList]);
   
   // Developer Overrides State
   const [overrides, setOverrides] = useState({
@@ -82,6 +101,8 @@ export const AdminConsole: React.FC = () => {
         addLog('/theme [color] - Set console accent color', 'SYS');
         addLog('/clear - Clear console buffer', 'SYS');
         addLog('/nuke - Global data wipe', 'ERR');
+        addLog('/grantadmin [user] [devid] [passkey] - Delegate admin privileges', 'SYS');
+        addLog('/admins - List all authorized administrators', 'OK');
         addLog('--- ADVANCED CMDs ---', 'SYS', '#fbbf24');
         addLog('/matrix - Toggle digital rain protocol', 'OK');
         addLog('/uptime - Show session duration', 'OK');
@@ -94,6 +115,45 @@ export const AdminConsole: React.FC = () => {
         addLog('/echo [msg] - Repeat input back to terminal', 'SYS');
         addLog('/unlock - Access restricted archive content', 'GLOBAL');
         break;
+
+      case '/grantadmin':
+      case '/giveadmin': {
+        if (args.length === 0) {
+          addLog('USAGE: /grantadmin <username> [jaxyn_dev_id] [jaxyn_passkey]', 'ERR');
+          audio.playError();
+          break;
+        }
+        const targetUser = args[0];
+        const isJaxynActive = devId.toUpperCase() === 'JAXYN120815';
+        const hasPassedCreds = args[1]?.toUpperCase() === 'JAXYN120815' && args[2]?.toUpperCase() === 'JAXYN';
+
+        if (isJaxynActive || hasPassedCreds) {
+          if (!adminList.includes(targetUser)) {
+            setAdminList(prev => [...prev, targetUser]);
+          }
+          addLog(`[ADMIN AUTHORITY] SUCCESS: PRIVILEGES INJECTED FOR USER '${targetUser}'`, 'OK', '#22c55e');
+          audio.playSuccess();
+        } else {
+          addLog('ACCESS REFUSED: SECURE KERNEL ENCRYPTED.', 'ERR', '#ef4444');
+          addLog("ONLY ROOT USER 'JAXYN120815' MIGHT DELEGATE ADMINISTRATIVE CAPABILITIES.", 'ERR');
+          addLog('SPECIFY MY CREDENTIALS: /grantadmin <user> <my_dev_id> <my_passkey>', 'SYS', accentColor);
+          audio.playError();
+        }
+        break;
+      }
+
+      case '/admins': {
+        addLog('--- GRANTED SYSTEM ADMINISTRATORS ---', 'OK', '#fbbf24');
+        addLog(`OWNER_ROOT: JAXYN120815 [LEVEL_10_GLOBAL_ADMIN]`, 'OK');
+        if (adminList.length === 0) {
+          addLog('No external admins delegated.', 'SYS');
+        } else {
+          adminList.forEach(user => {
+            addLog(`DELEGATED_ADMIN: ${user.toUpperCase()} [LEVEL_5_EXTERNAL]`, 'SYS');
+          });
+        }
+        break;
+      }
 
       case '/clear': 
         setLogs([]); 
