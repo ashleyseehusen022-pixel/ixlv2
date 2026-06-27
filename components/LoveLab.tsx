@@ -8,8 +8,20 @@ export const LoveLab: React.FC = () => {
   const [result, setResult] = useState<{ score: number; label: string; color: string } | null>(null);
 
   const calculateCompatibility = (n1: string, n2: string) => {
+    const name1Clean = n1.toLowerCase().trim();
+    const name2Clean = n2.toLowerCase().trim();
+
+    const isSpecialCouple = 
+      ((name1Clean === 'jaxyn' && name2Clean === 'bella') || (name1Clean === 'bella' && name2Clean === 'jaxyn')) ||
+      ((name1Clean === 'jaxyn' && name2Clean === 'amelia') || (name1Clean === 'amelia' && name2Clean === 'jaxyn')) ||
+      ((name1Clean === 'eleanor' && name2Clean === 'quinton') || (name1Clean === 'quinton' && name2Clean === 'eleanor'));
+
+    if (isSpecialCouple) {
+      return { score: 100, label: 'NEON SOULMATES', color: 'text-pink-500' };
+    }
+
     // Deterministic Hashing for "Accuracy"
-    const combined = [n1.toLowerCase().trim(), n2.toLowerCase().trim()].sort().join('');
+    const combined = [name1Clean, name2Clean].sort().join('');
     let hash = 0;
     for (let i = 0; i < combined.length; i++) {
       hash = (hash << 5) - hash + combined.charCodeAt(i);
