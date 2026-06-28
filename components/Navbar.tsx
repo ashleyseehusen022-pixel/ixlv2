@@ -12,6 +12,8 @@ interface NavbarProps {
   isPremium?: boolean;
   onGoPremium?: () => void;
   isAuthorizedAdmin?: boolean;
+  onSignOut?: () => void;
+  onOpenSettings?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ 
@@ -23,7 +25,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   isDevMode = false,
   isPremium = false,
   onGoPremium,
-  isAuthorizedAdmin = false
+  isAuthorizedAdmin = false,
+  onSignOut,
+  onOpenSettings
 }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
@@ -40,10 +44,13 @@ export const Navbar: React.FC<NavbarProps> = ({
     { id: Page.AILab, label: 'LABS' },
     { id: Page.VPN, label: 'PHONK-VPN' },
     { id: Page.Deploy, label: 'GITHUB_HUB' },
+    { id: Page.PermitShop, label: 'PERMIT_SHOP' },
   ];
 
-  if (isDevMode && isAuthorizedAdmin) {
-    navItems.push({ id: Page.DevTerminal, label: 'ROOT_TERM' });
+  if (isAuthorizedAdmin) {
+    if (isDevMode) {
+      navItems.push({ id: Page.DevTerminal, label: 'ROOT_TERM' });
+    }
     navItems.push({ id: Page.AdminConsole, label: 'ADMIN_CMD' });
   }
 
@@ -102,15 +109,42 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             ZIP
           </button>
+
+          <button 
+            onClick={onOpenSettings}
+            className="px-3 py-2 bg-white/10 hover:bg-green-500 hover:text-black text-gray-400 hover:text-white text-[9px] font-black italic uppercase transition-all flex items-center gap-1.5"
+            title="System Settings"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+              <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.1a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+            <span>SETTINGS</span>
+          </button>
           
           {/* PANIC Button: Restricted to Devs */}
           {isDevMode && (
             <button 
               onClick={handlePanic}
-              className="px-3 py-2 bg-red-600 hover:bg-white hover:text-red-600 text-white text-[9px] font-black italic uppercase transition-all shadow-[0_0_15px_rgba(239,68,68,0.3)] group flex items-center gap-2"
+              className="hidden sm:flex px-3 py-2 bg-red-600 hover:bg-white hover:text-red-600 text-white text-[9px] font-black italic uppercase transition-all shadow-[0_0_15px_rgba(239,68,68,0.3)] group flex items-center gap-2"
             >
               <div className="w-2 h-2 rounded-full bg-white animate-pulse"></div>
               PANIC
+            </button>
+          )}
+
+          {onSignOut && (
+            <button 
+              onClick={onSignOut}
+              className="hidden sm:flex px-3 py-2 border-2 border-red-500/30 hover:border-red-500 hover:bg-red-500/10 text-red-500 text-[9px] font-black italic uppercase skew-x-[-10deg] transition-all items-center gap-2"
+              title="Sign Out"
+            >
+              <span>SIGN_OUT</span>
+              <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                <polyline points="16 17 21 12 16 7" />
+                <line x1="21" y1="12" x2="9" y2="12" />
+              </svg>
             </button>
           )}
 
@@ -142,12 +176,31 @@ export const Navbar: React.FC<NavbarProps> = ({
               {item.label}
             </button>
           ))}
+          <button
+            onClick={() => { onOpenSettings?.(); setIsMenuOpen(false); }}
+            className="text-sm font-black italic text-left tracking-[0.2em] text-cyan-400 flex items-center gap-2"
+          >
+            <span>SYSTEM SETTINGS</span>
+          </button>
           {!isPremium && (
             <button 
               onClick={() => { onGoPremium?.(); setIsMenuOpen(false); }}
               className="py-4 bg-yellow-500 text-black text-xs font-black italic uppercase text-center"
             >
               UPGRADE TO PLATINUM
+            </button>
+          )}
+          {onSignOut && (
+            <button 
+              onClick={() => { onSignOut(); setIsMenuOpen(false); }}
+              className="w-full mt-2 py-3 bg-red-600/20 hover:bg-red-600/30 border border-red-500/40 text-red-400 text-xs font-black italic uppercase text-center flex items-center justify-center gap-2"
+            >
+              <span>SIGN OUT OF ACCOUNT</span>
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                <polyline points="16 17 21 12 16 7" />
+                <line x1="21" y1="12" x2="9" y2="12" />
+              </svg>
             </button>
           )}
         </div>

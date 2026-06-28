@@ -12,9 +12,10 @@ interface LogLine {
 
 interface AdminConsoleProps {
   devId?: string;
+  purchasedTier?: 'none' | 'junior' | 'admin' | 'creator';
 }
 
-export const AdminConsole: React.FC<AdminConsoleProps> = ({ devId = '' }) => {
+export const AdminConsole: React.FC<AdminConsoleProps> = ({ devId = '', purchasedTier = 'none' }) => {
   const [activeTab, setActiveTab] = useState<'terminal' | 'overrides' | 'state'>('terminal');
   const [logs, setLogs] = useState<LogLine[]>([]);
   const [inputValue, setInputValue] = useState('');
@@ -102,6 +103,27 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({ devId = '' }) => {
     const parts = processed.split(' ');
     const cmd = parts[0].toLowerCase();
     const args = parts.slice(1);
+
+    const devOnlyCommands = ['/nuke', '/exploit', '/leak', '/shutdown'];
+    const juniorCommands = ['/help', '/uptime', '/clear', '/theme', '/echo', '/credits', '/matrix', '/sysinfo', '/proxy', '/unlock'];
+
+    if (purchasedTier === 'junior') {
+      const isAllowed = juniorCommands.includes(cmd);
+      if (!isAllowed && cmd.startsWith('/')) {
+        addLog(`ACCESS DENIED: COMMAND [${cmd}] REQUIRES CENTRAL ADMINISTRATOR LEVEL CREDENTIALS. [JUNIOR CLEARANCE ACTIVE]`, 'ERR');
+        audio.playError();
+        return;
+      }
+    }
+
+    if (purchasedTier === 'admin') {
+      const isDevCommand = devOnlyCommands.includes(cmd);
+      if (isDevCommand && cmd.startsWith('/')) {
+        addLog(`ACCESS DENIED: COMMAND [${cmd}] REQUIRES CENTRAL CREATOR DEVELOPER LEVEL CREDENTIALS. [ADMIN CLEARANCE ACTIVE]`, 'ERR');
+        audio.playError();
+        return;
+      }
+    }
 
     switch (cmd) {
       case '/help':
@@ -315,7 +337,12 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({ devId = '' }) => {
     }
   };
 
-  const isAuthorized = devId.toUpperCase() === 'JAXYN120815' || adminList.map(a => a.toUpperCase()).includes(devId.toUpperCase());
+  const isAuthorized = 
+    purchasedTier === 'junior' || 
+    purchasedTier === 'admin' || 
+    purchasedTier === 'creator' || 
+    devId.toUpperCase() === 'JAXYN120815' || 
+    adminList.map(a => a.toUpperCase()).includes(devId.toUpperCase());
 
   if (!isAuthorized) {
     return (
@@ -353,7 +380,7 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({ devId = '' }) => {
     <div className="max-w-7xl mx-auto py-10 px-4 animate-fadeIn">
       {/* Tab Navigation */}
       <div className="flex gap-1 mb-6">
-        {['terminal', 'overrides', 'state'].map((tab) => (
+        {(purchasedTier === 'junior' ? ['terminal'] : ['terminal', 'overrides', 'state']).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab as any)}

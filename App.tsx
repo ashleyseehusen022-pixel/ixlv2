@@ -8,6 +8,7 @@ import { DevTerminal } from './components/DevTerminal';
 import { AdminConsole } from './components/AdminConsole';
 import { PremiumModal } from './components/PremiumModal';
 import { DeployPortal } from './components/DeployPortal';
+import { PermitShop } from './components/PermitShop';
 import { Game, Page } from './types';
 import { MOCK_GAMES, MOD_CONFIGS } from './constants';
 import { audio } from './services/audioService';
@@ -134,22 +135,10 @@ const AuthLock: React.FC<{ onUnlock: (isDev: boolean, devId: string, bypass?: bo
     currentRegistered[regUsername] = regPasskey;
     localStorage.setItem('phonk_registered_users', JSON.stringify(currentRegistered));
 
-    // Grant administrative credentials to bypass lock blocks
-    let currentAdmins: string[] = [];
-    try {
-      const storedAdmins = localStorage.getItem('phonk_granted_admins');
-      if (storedAdmins) currentAdmins = JSON.parse(storedAdmins);
-    } catch {}
-
-    if (!currentAdmins.map(a => a.toUpperCase()).includes(regUsername.toUpperCase())) {
-      currentAdmins.push(regUsername);
-      localStorage.setItem('phonk_granted_admins', JSON.stringify(currentAdmins));
-    }
-
     setBootLogs(prev => [
       ...prev,
       `[REGISTRY] > SUCCESS: PROFILE CREATED FOR '${regUsername.toUpperCase()}'`,
-      `[REGISTRY] > INITIALIZING CENTRAL DIRECTORY ENCRYPTION...`
+      `[REGISTRY] > NOTE: PERMIT REQUIRED TO ACCESS SECURE ADMINISTRATIVE SHELLS.`
     ]);
 
     audio.playSuccess();
@@ -453,7 +442,7 @@ const AuthLock: React.FC<{ onUnlock: (isDev: boolean, devId: string, bypass?: bo
   );
 };
 
-const AnimatedBackground: React.FC<{ themeIndex: number; onClick: () => void }> = ({ themeIndex, onClick }) => {
+const AnimatedBackground: React.FC<{ themeIndex: number; onClick: () => void; disabled?: boolean }> = ({ themeIndex, onClick, disabled }) => {
   const themes = [
     'from-slate-950 via-green-950/20 to-slate-950',
     'from-slate-950 via-yellow-950/20 to-slate-950',
@@ -462,35 +451,89 @@ const AnimatedBackground: React.FC<{ themeIndex: number; onClick: () => void }> 
   ];
   return (
     <div 
-      className={`fixed inset-0 z-0 bg-gradient-to-br ${themes[themeIndex] || themes[0]} transition-colors duration-1000 cursor-crosshair`}
+      className={`fixed inset-0 z-0 bg-gradient-to-br ${disabled ? 'bg-[#020617]' : (themes[themeIndex] || themes[0])} ${disabled ? '' : 'transition-colors duration-1000'} cursor-crosshair`}
       onClick={onClick}
     />
   );
 };
 
 export const App: React.FC = () => {
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-  const [isDevMode, setIsDevMode] = useState<boolean>(false);
-  const [activeDevId, setActiveDevId] = useState<string>('');
+  const [purchasedTier, setPurchasedTier] = useState<'none' | 'junior' | 'admin' | 'creator'>(() => {
+    return (localStorage.getItem('phonk_purchased_tier') as 'none' | 'junior' | 'admin' | 'creator') || 'none';
+  });
+
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    const tier = localStorage.getItem('phonk_purchased_tier');
+    return tier ? (tier !== 'none') : false;
+  });
+
+  const [isDevMode, setIsDevMode] = useState<boolean>(() => {
+    const tier = localStorage.getItem('phonk_purchased_tier');
+    return tier === 'creator';
+  });
+
+  const [activeDevId, setActiveDevId] = useState<string>(() => {
+    const tier = localStorage.getItem('phonk_purchased_tier');
+    if (tier === 'junior') return 'JUNIOR_OPERATOR';
+    if (tier === 'admin') return 'SYSTEM_ADMIN';
+    if (tier === 'creator') return 'ULTIMATE_CREATOR';
+    return '';
+  });
+
   const [isBypassed, setIsBypassed] = useState<boolean>(false);
-  const [isPremium, setIsPremium] = useState<boolean>(false);
+
+  const [isPremium, setIsPremium] = useState<boolean>(() => {
+    const tier = localStorage.getItem('phonk_purchased_tier');
+    return tier ? (tier !== 'none') : false;
+  });
+
   const [showPremiumModal, setShowPremiumModal] = useState<boolean>(false);
+  const [showSettingsModal, setShowSettingsModal] = useState<boolean>(false);
   const [currentPage, setCurrentPage] = useState<Page>(Page.Home);
   const [activeGame, setActiveGame] = useState<Game | null>(null);
   const [bgThemeIndex, setBgThemeIndex] = useState(0);
   
-  const [settings, setSettings] = useState({ 
-    neonIntensity: 0.6, 
-    alwaysScores: false, 
-    invincible: false, 
-    infiniteJumps: false,
-    infiniteMoney: false,
-    speedHack: 1.0,
-    moneyMultiplier: 1.0,
-    turboMode: false
+  const [settings, setSettings] = useState(() => {
+    try {
+      const storedGlitch = localStorage.getItem('phonk_glitch_effects');
+      const storedTurbo = localStorage.getItem('phonk_turbo_mode');
+      return { 
+        neonIntensity: 0.6, 
+        alwaysScores: false, 
+        invincible: false, 
+        infiniteJumps: false,
+        infiniteMoney: false,
+        speedHack: 1.0,
+        moneyMultiplier: 1.0,
+        turboMode: storedTurbo === 'true',
+        glitchEffects: storedGlitch !== 'false'
+      };
+    } catch {
+      return { 
+        neonIntensity: 0.6, 
+        alwaysScores: false, 
+        invincible: false, 
+        infiniteJumps: false,
+        infiniteMoney: false,
+        speedHack: 1.0,
+        moneyMultiplier: 1.0,
+        turboMode: false,
+        glitchEffects: true
+      };
+    }
   });
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  useEffect(() => {
+    try {
+      if (settings.glitchEffects) {
+        document.body.classList.remove('glitch-disabled');
+      } else {
+        document.body.classList.add('glitch-disabled');
+      }
+    } catch {}
+  }, [settings.glitchEffects]);
 
   useEffect(() => {
     if (iframeRef.current && iframeRef.current.contentWindow) {
@@ -510,15 +553,48 @@ export const App: React.FC = () => {
   };
 
   const updateSetting = (key: string, value: any) => {
-    setSettings(prev => ({ ...prev, [key]: value }));
+    setSettings(prev => {
+      const updated = { ...prev, [key]: value };
+      try {
+        if (key === 'glitchEffects') {
+          localStorage.setItem('phonk_glitch_effects', String(value));
+        }
+        if (key === 'turboMode') {
+          localStorage.setItem('phonk_turbo_mode', String(value));
+        }
+      } catch {}
+      return updated;
+    });
   };
 
   const handleUnlock = (isDev: boolean, id: string, bypass: boolean = false) => {
     setIsAuthenticated(true);
-    setIsDevMode(isDev);
     setActiveDevId(id);
     setIsBypassed(bypass);
-    if (isDev) setIsPremium(true); // Developers are automatically premium
+
+    if (bypass) {
+      setPurchasedTier('none');
+      localStorage.setItem('phonk_purchased_tier', 'none');
+      setIsDevMode(false);
+      setIsPremium(false);
+    } else {
+      // Load any saved tier specifically mapped to this user ID
+      let userTier: 'none' | 'junior' | 'admin' | 'creator' = 'none';
+      try {
+        const storedTiers = localStorage.getItem('phonk_user_tiers');
+        if (storedTiers) {
+          const tiersMap = JSON.parse(storedTiers);
+          if (tiersMap[id.toUpperCase()]) {
+            userTier = tiersMap[id.toUpperCase()];
+          }
+        }
+      } catch {}
+
+      setPurchasedTier(userTier);
+      localStorage.setItem('phonk_purchased_tier', userTier);
+      setIsDevMode(userTier === 'creator' || id.toUpperCase() === 'JAXYN120815');
+      setIsPremium(userTier !== 'none' || id.toUpperCase() === 'JAXYN120815');
+    }
   };
 
   const handleGoPremium = () => {
@@ -531,22 +607,63 @@ export const App: React.FC = () => {
     audio.playSuccess();
   };
 
-  if (!isAuthenticated) return <AuthLock onUnlock={handleUnlock} />;
+  const handleUpgradeTier = (tier: 'junior' | 'admin' | 'creator') => {
+    setPurchasedTier(tier);
+    localStorage.setItem('phonk_purchased_tier', tier);
+    setIsPremium(true);
+    setIsDevMode(tier === 'creator');
+    setIsAuthenticated(true);
+    setIsBypassed(false);
+    
+    let newAdminName = activeDevId;
+    if (!newAdminName) {
+      newAdminName = tier === 'junior' ? 'JUNIOR_OPERATOR' : tier === 'admin' ? 'SYSTEM_ADMIN' : 'ULTIMATE_CREATOR';
+      setActiveDevId(newAdminName);
+    }
 
-  const isAuthorizedAdmin = !isBypassed && (activeDevId.toUpperCase() === 'JAXYN120815' || (() => {
     try {
       const stored = localStorage.getItem('phonk_granted_admins');
-      if (stored) {
-        const list: string[] = JSON.parse(stored);
-        return list.some(u => u.toUpperCase() === activeDevId.toUpperCase());
+      let list: string[] = stored ? JSON.parse(stored) : [];
+      if (!list.map(u => u.toUpperCase()).includes(newAdminName.toUpperCase())) {
+        list.push(newAdminName);
+        localStorage.setItem('phonk_granted_admins', JSON.stringify(list));
       }
     } catch {}
-    return false;
-  })());
+
+    // Persist tier specifically mapped to this user ID
+    try {
+      const storedTiers = localStorage.getItem('phonk_user_tiers');
+      const tiersMap = storedTiers ? JSON.parse(storedTiers) : {};
+      tiersMap[newAdminName.toUpperCase()] = tier;
+      localStorage.setItem('phonk_user_tiers', JSON.stringify(tiersMap));
+    } catch {}
+  };
+
+  const handleSignOut = () => {
+    setIsAuthenticated(false);
+    setIsDevMode(false);
+    setActiveDevId('');
+    setIsBypassed(false);
+    setIsPremium(false);
+    setPurchasedTier('none');
+    localStorage.removeItem('phonk_purchased_tier');
+    setActiveGame(null);
+    setCurrentPage(Page.Home);
+    audio.playWhoosh();
+  };
+
+  if (!isAuthenticated) return <AuthLock onUnlock={handleUnlock} />;
+
+  const isAuthorizedAdmin = !isBypassed && (
+    activeDevId.toUpperCase() === 'JAXYN120815' || 
+    purchasedTier === 'junior' || 
+    purchasedTier === 'admin' || 
+    purchasedTier === 'creator'
+  );
 
   return (
     <div className={`min-h-screen text-white transition-all duration-500 ${settings.turboMode ? 'contrast-125 saturate-150 brightness-110' : ''}`}>
-      <AnimatedBackground themeIndex={bgThemeIndex} onClick={() => setBgThemeIndex((p) => (p + 1) % 4)} />
+      <AnimatedBackground themeIndex={bgThemeIndex} onClick={() => setBgThemeIndex((p) => (p + 1) % 4)} disabled={!settings.glitchEffects} />
       
       {/* Dev Status Overlay */}
       {isDevMode && (
@@ -574,6 +691,8 @@ export const App: React.FC = () => {
         onGoPremium={handleGoPremium}
         onDownload={() => downloadProjectZip({ 'README.md': 'Phonk Systems Internal' })} 
         isAuthorizedAdmin={isAuthorizedAdmin}
+        onSignOut={handleSignOut}
+        onOpenSettings={() => setShowSettingsModal(true)}
       />
       
       <main className="relative z-10 pt-24 pb-12 px-4 md:px-8 max-w-7xl mx-auto">
@@ -653,11 +772,12 @@ export const App: React.FC = () => {
           </div>
         )}
 
-        {currentPage === Page.AILab && <AIGameDev />}
+        {currentPage === Page.AILab && <AIGameDev activeDevId={activeDevId} />}
         {currentPage === Page.LoveTest && <LoveLab />}
-        {currentPage === Page.DevTerminal && isAuthorizedAdmin && <DevTerminal devId={activeDevId} />}
-        {currentPage === Page.AdminConsole && isAuthorizedAdmin && <AdminConsole devId={activeDevId} />}
+        {currentPage === Page.DevTerminal && isAuthorizedAdmin && purchasedTier === 'creator' && <DevTerminal devId={activeDevId} />}
+        {currentPage === Page.AdminConsole && isAuthorizedAdmin && <AdminConsole devId={activeDevId} purchasedTier={purchasedTier} />}
         {currentPage === Page.Deploy && <DeployPortal />}
+        {currentPage === Page.PermitShop && <PermitShop activeDevId={activeDevId} onUpgrade={handleUpgradeTier} purchasedTier={purchasedTier} isBypassed={isBypassed} />}
 
         {currentPage === Page.VPN && (
           <div className="max-w-4xl mx-auto py-20 animate-fadeIn text-center">
@@ -677,6 +797,120 @@ export const App: React.FC = () => {
           onClose={() => setShowPremiumModal(false)} 
           onSuccess={handlePremiumSuccess} 
         />
+      )}
+
+      {showSettingsModal && (
+        <div className="fixed inset-0 z-[300] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="w-full max-w-md glass border-2 border-green-500 bg-slate-950 p-6 rounded-sm relative overflow-hidden shadow-[0_0_50px_rgba(34,197,94,0.15)] animate-scaleIn">
+            
+            {/* Top scanning bar decorative element */}
+            <div className="absolute top-0 left-0 right-0 h-1 bg-green-500/30 overflow-hidden">
+              <div className="h-full bg-green-500 w-1/3 animate-loadingLine"></div>
+            </div>
+
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h3 className="text-xl font-black italic uppercase tracking-tighter text-green-500">SYSTEM_CONFIGURATION_UPLINK</h3>
+                <span className="text-[8px] font-mono text-gray-500 uppercase tracking-widest block mt-0.5">Adjust client shaders, performance nodes, and hacks</span>
+              </div>
+              <button 
+                onClick={() => { setShowSettingsModal(false); audio.playClick(); }}
+                className="text-gray-400 hover:text-white text-xs font-mono border border-white/10 hover:border-white/30 px-2 py-1 rounded"
+              >
+                [ESC]
+              </button>
+            </div>
+
+            <div className="space-y-6">
+              {/* Glitch Effects & CRT Shader Toggle */}
+              <div className="p-4 border border-white/5 bg-black/40 rounded-sm">
+                <div className="flex justify-between items-start gap-4 mb-2">
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-black italic text-gray-300 uppercase tracking-wider block">
+                      GLITCH_EFFECTS_AND_CRT_SHADERS
+                    </label>
+                    <span className="text-[9px] font-medium text-gray-500 uppercase tracking-wide leading-relaxed block">
+                      Enable CRT scanline sweeps, glitch visual noise, and continuous animated background gradient shaders. Disable this for better performance on lower-end devices.
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      updateSetting('glitchEffects', !settings.glitchEffects);
+                      audio.playSuccess();
+                    }}
+                    className={`px-3 py-1.5 text-[9px] font-black italic uppercase transition-all ${
+                      settings.glitchEffects 
+                        ? 'bg-green-600 text-white border-2 border-green-400' 
+                        : 'bg-black text-gray-600 border-2 border-white/10'
+                    }`}
+                  >
+                    {settings.glitchEffects ? 'ENABLED' : 'DISABLED'}
+                  </button>
+                </div>
+                {/* Visual Status Indicator */}
+                <div className="flex items-center gap-1.5 mt-3">
+                  <div className={`w-1.5 h-1.5 rounded-full ${settings.glitchEffects ? 'bg-green-500 animate-pulse' : 'bg-gray-800'}`}></div>
+                  <span className="text-[8px] font-black font-mono text-gray-600 uppercase">
+                    {settings.glitchEffects ? 'SYSTEM_SHADERS_ENGAGED // ACTIVE_ANIMATION' : 'STATIC_BACKGROUND // LOW_COMPUTE_MODE'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Turbo Mode Toggle */}
+              <div className="p-4 border border-white/5 bg-black/40 rounded-sm">
+                <div className="flex justify-between items-start gap-4 mb-2">
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-black italic text-gray-300 uppercase tracking-wider block">
+                      TURBO_PERFORMANCE_MODE
+                    </label>
+                    <span className="text-[9px] font-medium text-gray-500 uppercase tracking-wide leading-relaxed block">
+                      Enhance global contrast, saturation, and display brightness. Active on premium servers.
+                    </span>
+                  </div>
+                  <button
+                    disabled={!isPremium}
+                    onClick={() => {
+                      updateSetting('turboMode', !settings.turboMode);
+                      audio.playSuccess();
+                    }}
+                    className={`px-3 py-1.5 text-[9px] font-black italic uppercase transition-all ${
+                      !isPremium 
+                        ? 'bg-gray-950 text-gray-700 border-2 border-white/5 cursor-not-allowed' 
+                        : settings.turboMode 
+                          ? 'bg-yellow-500 text-black border-2 border-yellow-300' 
+                          : 'bg-black text-gray-600 border-2 border-white/10'
+                    }`}
+                  >
+                    {!isPremium ? 'LOCKED' : settings.turboMode ? 'ACTIVE' : 'INACTIVE'}
+                  </button>
+                </div>
+                {/* Visual Status Indicator */}
+                <div className="flex items-center gap-1.5 mt-3">
+                  <div className={`w-1.5 h-1.5 rounded-full ${!isPremium ? 'bg-red-500' : settings.turboMode ? 'bg-yellow-500 animate-ping' : 'bg-gray-800'}`}></div>
+                  <span className="text-[8px] font-black font-mono text-gray-600 uppercase">
+                    {!isPremium ? 'PLATINUM_MEMBERSHIP_REQUIRED' : settings.turboMode ? 'TURBO_MODE_ENGAGED // ENHANCED_GFX' : 'STANDARD_GFX_ENGINE'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-8 flex gap-3">
+              <button
+                onClick={() => { setShowSettingsModal(false); audio.playClick(); }}
+                className="flex-1 py-3 bg-green-600/10 hover:bg-green-600 hover:text-black border-2 border-green-500 text-green-500 font-black italic uppercase skew-x-[-12deg] transition-all text-[10px] tracking-widest"
+              >
+                SAVE_AND_APPLY_CONFIG
+              </button>
+            </div>
+
+            {/* Decorative bottom line */}
+            <div className="mt-6 pt-4 border-t border-white/5 flex justify-between items-center text-[7px] text-gray-600 font-black tracking-widest font-mono">
+              <span>PROTOCOL: 0x55F3</span>
+              <span>NODE: {activeDevId || 'GUEST_UPLINK'}</span>
+            </div>
+
+          </div>
+        </div>
       )}
 
       <footer className="relative z-10 border-t border-white/5 py-12 px-6 bg-black/40 backdrop-blur-xl mt-20">

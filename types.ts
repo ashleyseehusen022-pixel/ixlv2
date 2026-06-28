@@ -42,5 +42,6 @@ export enum Page {
   LoveTest = 'lovetest',
   DevTerminal = 'devterminal',
   AdminConsole = 'adminconsole',
-  Premium = 'premium'
+  Premium = 'premium',
+  PermitShop = 'permitshop'
 }
