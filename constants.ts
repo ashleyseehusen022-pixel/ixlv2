@@ -473,16 +473,530 @@ const PHONK_MINES_CODE = `<!DOCTYPE html><html><head><style>body { margin: 0; ba
 
 const DRIFT_KING_CODE = `<!DOCTYPE html><html><head><style>body { margin: 0; background: #000; overflow: hidden; }</style></head><body><canvas id="game"></canvas>${GAME_CORE_SCRIPT}<script>const canvas = document.getElementById('game'); const ctx = canvas.getContext('2d'); let width, height; const resize = () => { width = canvas.width = window.innerWidth; height = canvas.height = window.innerHeight; }; window.addEventListener('resize', resize); resize(); let car = { x: width/2, y: height/2, rot: 0, spd: 0 }; let keys = {}; window.onkeydown = e => keys[e.key] = true; window.onkeyup = e => keys[e.key] = false; function loop() { ctx.fillStyle = '#020617'; ctx.fillRect(0,0,width,height); if(keys['w'] || window.virtualKeys.up) car.spd += 0.2; else car.spd *= 0.98; if(keys['a'] || window.virtualKeys.left) car.rot -= 0.05; if(keys['d'] || window.virtualKeys.right) car.rot += 0.05; car.x += Math.cos(car.rot)*car.spd; car.y += Math.sin(car.rot)*car.spd; ctx.save(); ctx.translate(car.x, car.y); ctx.rotate(car.rot); ctx.fillStyle = '#22c55e'; ctx.fillRect(-20,-10,40,20); ctx.restore(); requestAnimationFrame(loop); } loop();</script></body></html>`;
 
+const PHONK_RUNNER_CODE = `<!DOCTYPE html><html><head><style>
+    body { margin: 0; background: #020617; overflow: hidden; font-family: sans-serif; touch-action: none; color: #fff; }
+    canvas { display: block; width: 100vw; height: 100vh; }
+    .score { position: fixed; top: 20px; left: 20px; font-weight: 900; font-style: italic; font-size: 24px; color: #fbbf24; text-shadow: 0 0 10px rgba(251, 191, 36, 0.5); pointer-events: none; text-transform: uppercase; z-index: 50; }
+</style></head><body>
+<div class="score" id="runner-score">SCORE: 0</div>
+<canvas id="game"></canvas>${GAME_CORE_SCRIPT}
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+let width, height;
+const resize = () => { width = canvas.width = window.innerWidth; height = canvas.height = window.innerHeight; };
+window.addEventListener('resize', resize);
+resize();
+
+let score = 0;
+let player = { x: 150, y: 0, vy: 0, size: 24, onGround: false, jumpCount: 0 };
+let obstacles = [];
+let chips = [];
+let speed = 6;
+let isGameOver = false;
+
+const jump = () => {
+    const isInfJumps = window.gameSettings.infiniteJumps;
+    if (player.onGround || isInfJumps || player.jumpCount < 2) {
+        player.vy = -(window.gameSettings.jumpStrength || 10);
+        player.onGround = false;
+        player.jumpCount++;
+        triggerSFX('bounce');
+    }
+};
+
+window.addEventListener('keydown', e => {
+    if (e.key === ' ' || e.key === 'ArrowUp' || e.key === 'w') {
+        jump();
+    }
+});
+window.addEventListener('mousedown', (e) => {
+    if (e.target.closest('#save-uplink')) return;
+    jump();
+});
+window.addEventListener('touchstart', (e) => {
+    if (e.target.closest('#save-uplink')) return;
+    jump();
+});
+
+function spawnObstacle() {
+    obstacles.push({
+        x: width + 50,
+        w: 20 + Math.random() * 30,
+        h: 40 + Math.random() * 60,
+        color: '#ef4444'
+    });
+}
+
+function spawnChip() {
+    chips.push({
+        x: width + 50,
+        y: height - 120 - Math.random() * 150,
+        size: 8,
+        color: '#fbbf24'
+    });
+}
+
+let obstTimer = 0;
+let chipTimer = 0;
+
+function loop() {
+    ctx.fillStyle = '#020617';
+    ctx.fillRect(0,0,width,height);
+
+    const speedMultiplier = window.gameSettings.speedHack || 1.0;
+    const isInv = window.gameSettings.invincible;
+
+    const groundY = height - 100;
+    ctx.strokeStyle = '#22c55e';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(0, groundY);
+    ctx.lineTo(width, groundY);
+    ctx.stroke();
+
+    ctx.strokeStyle = 'rgba(34, 197, 94, 0.15)';
+    ctx.lineWidth = 1;
+    for (let x = -500; x < width + 500; x += 80) {
+        ctx.beginPath();
+        ctx.moveTo(x - (score * 2) % 80, groundY);
+        ctx.lineTo(x + (x - width/2) * 1.5 - (score * 2) % 80, height);
+        ctx.stroke();
+    }
+
+    if (window.virtualKeys.up || window.virtualKeys.action) {
+        jump();
+    }
+
+    if (!isGameOver) {
+        player.vy += 0.5;
+        player.y += player.vy;
+        if (player.y >= groundY - player.size) {
+            player.y = groundY - player.size;
+            player.vy = 0;
+            player.onGround = true;
+            player.jumpCount = 0;
+        }
+
+        obstTimer++;
+        if (obstTimer > 90 / speedMultiplier) {
+            spawnObstacle();
+            obstTimer = 0;
+        }
+
+        chipTimer++;
+        if (chipTimer > 60 / speedMultiplier) {
+            spawnChip();
+            chipTimer = 0;
+        }
+
+        obstacles.forEach((obs, idx) => {
+            obs.x -= speed * speedMultiplier;
+            ctx.fillStyle = obs.color;
+            ctx.fillRect(obs.x, groundY - obs.h, obs.w, obs.h);
+
+            if (!isInv && obs.x < player.x + player.size && obs.x + obs.w > player.x &&
+                groundY - obs.h < player.y + player.size) {
+                isGameOver = true;
+                triggerSFX('error');
+            }
+        });
+        obstacles = obstacles.filter(obs => obs.x > -100);
+
+        chips.forEach((c, idx) => {
+            c.x -= speed * speedMultiplier;
+            ctx.fillStyle = c.color;
+            ctx.beginPath();
+            ctx.arc(c.x, c.y, c.size, 0, Math.PI * 2);
+            ctx.fill();
+
+            const dist = Math.hypot(c.x - (player.x + player.size/2), c.y - (player.y + player.size/2));
+            if (dist < player.size + c.size) {
+                score += 10;
+                document.getElementById('runner-score').innerText = 'SCORE: ' + score;
+                chips.splice(idx, 1);
+                triggerSFX('score');
+            }
+        });
+        chips = chips.filter(c => c.x > -100);
+
+        score++;
+        document.getElementById('runner-score').innerText = 'SCORE: ' + score;
+    } else {
+        ctx.fillStyle = 'rgba(239, 68, 68, 0.9)';
+        ctx.font = 'bold italic 28px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('CRITICAL OVERHEAT: GAME OVER', width/2, height/2);
+        ctx.font = 'bold 16px monospace';
+        ctx.fillStyle = '#fff';
+        ctx.fillText('CLICK TO BOOT RECOVERY', width/2, height/2 + 50);
+
+        const reset = () => {
+            score = 0;
+            player.y = groundY - player.size;
+            player.vy = 0;
+            obstacles = [];
+            chips = [];
+            isGameOver = false;
+            triggerSFX('click');
+        };
+        window.onclick = reset;
+        window.ontouchstart = reset;
+    }
+
+    ctx.fillStyle = '#22c55e';
+    ctx.shadowColor = '#22c55e';
+    ctx.shadowBlur = 15;
+    ctx.fillRect(player.x, player.y, player.size, player.size);
+    ctx.shadowBlur = 0;
+
+    requestAnimationFrame(loop);
+}
+loop();
+</script></body></html>`;
+
+const SYNTHWAVE_INVADERS_CODE = `<!DOCTYPE html><html><head><style>
+    body { margin: 0; background: #020617; overflow: hidden; font-family: sans-serif; touch-action: none; color: #fff; }
+    canvas { display: block; width: 100vw; height: 100vh; }
+    .score { position: fixed; top: 20px; left: 20px; font-weight: 900; font-style: italic; font-size: 24px; color: #fbbf24; text-shadow: 0 0 10px rgba(251, 191, 36, 0.5); pointer-events: none; text-transform: uppercase; z-index: 50; }
+</style></head><body>
+<div class="score" id="invaders-score">SCORE: 0</div>
+<canvas id="game"></canvas>${GAME_CORE_SCRIPT}
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+let width, height;
+const resize = () => { width = canvas.width = window.innerWidth; height = canvas.height = window.innerHeight; };
+window.addEventListener('resize', resize);
+resize();
+
+let score = 0;
+let player = { x: width/2, y: height - 100, size: 30 };
+let bullets = [];
+let invaders = [];
+let invaderBullets = [];
+let invaderDirection = 1;
+let invaderSpeed = 1.5;
+let keys = {};
+
+window.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
+window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+
+function shoot() {
+    const bSpeed = window.gameSettings.bulletSpeed || 8;
+    const bSize = window.gameSettings.bulletSize || 1;
+    const triple = window.gameSettings.tripleShot;
+
+    if (triple) {
+        bullets.push({ x: player.x, y: player.y - 15, vx: 0, vy: -bSpeed, size: 4 * bSize });
+        bullets.push({ x: player.x - 15, y: player.y - 10, vx: -2, vy: -bSpeed, size: 4 * bSize });
+        bullets.push({ x: player.x + 15, y: player.y - 10, vx: 2, vy: -bSpeed, size: 4 * bSize });
+    } else {
+        bullets.push({ x: player.x, y: player.y - 15, vx: 0, vy: -bSpeed, size: 4 * bSize });
+    }
+    triggerSFX('click');
+}
+
+window.addEventListener('mousedown', (e) => {
+    if (e.target.closest('#save-uplink')) return;
+    shoot();
+});
+window.addEventListener('touchstart', (e) => {
+    if (e.target.closest('#save-uplink')) return;
+    shoot();
+});
+
+function spawnInvaders() {
+    invaders = [];
+    const cols = Math.floor(width / 80) - 2;
+    for (let r = 0; r < 4; r++) {
+        for (let c = 0; c < Math.min(cols, 10); c++) {
+            invaders.push({
+                x: 100 + c * 70,
+                y: 100 + r * 50,
+                w: 40,
+                h: 24,
+                color: r % 2 === 0 ? '#ec4899' : '#3b82f6',
+                scoreVal: (4 - r) * 10
+            });
+        }
+    }
+}
+spawnInvaders();
+
+let lastShotTime = 0;
+
+function loop() {
+    ctx.fillStyle = '#020617';
+    ctx.fillRect(0,0,width,height);
+
+    const isInv = window.gameSettings.invincible;
+    const rate = window.gameSettings.fireRate || 200;
+
+    if (keys['a'] || keys['arrowleft'] || window.virtualKeys.left) player.x -= 7;
+    if (keys['d'] || keys['arrowright'] || window.virtualKeys.right) player.x += 7;
+    if (keys[' '] || window.virtualKeys.action) {
+        const now = Date.now();
+        if (now - lastShotTime > rate) {
+            shoot();
+            lastShotTime = now;
+        }
+    }
+
+    if (player.x < player.size) player.x = player.size;
+    if (player.x > width - player.size) player.x = width - player.size;
+
+    bullets.forEach((b, idx) => {
+        b.x += b.vx;
+        b.y += b.vy;
+        ctx.fillStyle = '#22c55e';
+        ctx.fillRect(b.x - b.size/2, b.y, b.size, 15);
+    });
+    bullets = bullets.filter(b => b.y > 0);
+
+    let changeDir = false;
+    invaders.forEach(inv => {
+        inv.x += invaderSpeed * invaderDirection;
+        if (inv.x > width - 60 || inv.x < 20) changeDir = true;
+
+        ctx.fillStyle = inv.color;
+        ctx.fillRect(inv.x, inv.y, inv.w, inv.h);
+
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(inv.x + inv.w/4, inv.y);
+        ctx.lineTo(inv.x + inv.w/4 - 4, inv.y - 6);
+        ctx.moveTo(inv.x + (3*inv.w)/4, inv.y);
+        ctx.lineTo(inv.x + (3*inv.w)/4 + 4, inv.y - 6);
+        ctx.stroke();
+    });
+
+    if (changeDir) {
+        invaderDirection *= -1;
+        invaders.forEach(inv => {
+            inv.y += 15;
+        });
+    }
+
+    if (Math.random() < 0.015 && invaders.length > 0) {
+        const randomInv = invaders[Math.floor(Math.random() * invaders.length)];
+        invaderBullets.push({ x: randomInv.x + randomInv.w/2, y: randomInv.y + randomInv.h, vy: 4 });
+    }
+
+    invaderBullets.forEach((ib, idx) => {
+        ib.y += ib.vy;
+        ctx.fillStyle = '#ef4444';
+        ctx.fillRect(ib.x - 2, ib.y, 4, 10);
+
+        if (!isInv && Math.abs(ib.x - player.x) < player.size && Math.abs(ib.y - player.y) < player.size) {
+            score = Math.max(0, score - 50);
+            document.getElementById('invaders-score').innerText = 'SCORE: ' + score;
+            invaderBullets.splice(idx, 1);
+            triggerSFX('error');
+        }
+    });
+    invaderBullets = invaderBullets.filter(ib => ib.y < height);
+
+    bullets.forEach((b, bIdx) => {
+        invaders.forEach((inv, invIdx) => {
+            if (b.x > inv.x && b.x < inv.x + inv.w && b.y > inv.y && b.y < inv.y + inv.h) {
+                bullets.splice(bIdx, 1);
+                invaders.splice(invIdx, 1);
+                score += inv.scoreVal;
+                document.getElementById('invaders-score').innerText = 'SCORE: ' + score;
+                triggerSFX('score');
+            }
+        });
+    });
+
+    if (invaders.length === 0) {
+        spawnInvaders();
+        invaderSpeed += 0.5;
+    }
+
+    ctx.fillStyle = '#22c55e';
+    ctx.beginPath();
+    ctx.moveTo(player.x, player.y - player.size);
+    ctx.lineTo(player.x - player.size, player.y + player.size/2);
+    ctx.lineTo(player.x + player.size, player.y + player.size/2);
+    ctx.closePath();
+    ctx.fill();
+
+    requestAnimationFrame(loop);
+}
+loop();
+</script></body></html>`;
+
+const CYBER_ESCAPE_CODE = `<!DOCTYPE html><html><head><style>
+    body { margin: 0; background: #020617; overflow: hidden; font-family: sans-serif; touch-action: none; color: #fff; }
+    canvas { display: block; width: 100vw; height: 100vh; }
+    .score { position: fixed; top: 20px; left: 20px; font-weight: 900; font-style: italic; font-size: 24px; color: #fbbf24; text-shadow: 0 0 10px rgba(251, 191, 36, 0.5); pointer-events: none; text-transform: uppercase; z-index: 50; }
+</style></head><body>
+<div class="score" id="escape-score">DATASEC: 0%</div>
+<canvas id="game"></canvas>${GAME_CORE_SCRIPT}
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+let width, height;
+const resize = () => { width = canvas.width = window.innerWidth; height = canvas.height = window.innerHeight; };
+window.addEventListener('resize', resize);
+resize();
+
+let score = 0;
+let totalNodes = 10;
+let player = { x: 100, y: 100, r: 12, speed: 4 };
+let nodes = [];
+let sentries = [];
+let keys = {};
+
+window.onkeydown = e => keys[e.key.toLowerCase()] = true;
+window.onkeyup = e => keys[e.key.toLowerCase()] = false;
+
+function setupLevel() {
+    nodes = [];
+    sentries = [];
+    for (let i = 0; i < totalNodes; i++) {
+        nodes.push({
+            x: 150 + Math.random() * (width - 300),
+            y: 150 + Math.random() * (height - 300),
+            collected: false
+        });
+    }
+    for (let i = 0; i < 4; i++) {
+        sentries.push({
+            x: width / 2 + (i - 2) * 100,
+            y: height / 2 + (Math.random() - 0.5) * 200,
+            vx: (Math.random() > 0.5 ? 1 : -1) * (2 + Math.random() * 2),
+            vy: (Math.random() > 0.5 ? 1 : -1) * (2 + Math.random() * 2),
+            r: 15
+        });
+    }
+}
+setupLevel();
+
+function loop() {
+    ctx.fillStyle = '#020617';
+    ctx.fillRect(0,0,width,height);
+
+    const slowMo = window.gameSettings.slowMo;
+    const ghost = window.gameSettings.ghostMode;
+    const reveal = window.gameSettings.revealMines;
+
+    let dx = 0; let dy = 0;
+    if (keys['w'] || keys['arrowup'] || window.virtualKeys.up) dy = -1;
+    if (keys['s'] || keys['arrowdown'] || window.virtualKeys.down) dy = 1;
+    if (keys['a'] || keys['arrowleft'] || window.virtualKeys.left) dx = -1;
+    if (keys['d'] || keys['arrowright'] || window.virtualKeys.right) dx = 1;
+
+    if (dx !== 0 && dy !== 0) {
+        dx *= 0.7071; dy *= 0.7071;
+    }
+
+    player.x += dx * player.speed;
+    player.y += dy * player.speed;
+
+    const margin = 50;
+    if (player.x < margin) player.x = margin;
+    if (player.x > width - margin) player.x = width - margin;
+    if (player.y < margin) player.y = margin;
+    if (player.y > height - margin) player.y = height - margin;
+
+    ctx.strokeStyle = '#3b82f6';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(margin, margin, width - margin * 2, height - margin * 2);
+
+    let collectedCount = 0;
+    nodes.forEach(node => {
+        if (!node.collected) {
+            const dist = Math.hypot(node.x - player.x, node.y - player.y);
+            if (dist < player.r + 8) {
+                node.collected = true;
+                score += 10;
+                triggerSFX('score');
+            }
+        }
+        if (node.collected) collectedCount++;
+        else {
+            ctx.fillStyle = '#fbbf24';
+            ctx.shadowColor = '#fbbf24';
+            ctx.shadowBlur = reveal ? 20 : 0;
+            ctx.beginPath();
+            ctx.arc(node.x, node.y, 6, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+        }
+    });
+
+    const completion = Math.floor((collectedCount / totalNodes) * 100);
+    document.getElementById('escape-score').innerText = 'DATASEC: ' + completion + '%';
+
+    if (completion === 100) {
+        score += 100;
+        totalNodes += 2;
+        setupLevel();
+        triggerSFX('success');
+    }
+
+    sentries.forEach(sen => {
+        const speedMultiplier = slowMo ? 0.2 : 1.0;
+        sen.x += sen.vx * speedMultiplier;
+        sen.y += sen.vy * speedMultiplier;
+
+        if (sen.x < margin + sen.r || sen.x > width - margin - sen.r) sen.vx *= -1;
+        if (sen.y < margin + sen.r || sen.y > height - margin - sen.r) sen.vy *= -1;
+
+        if (!ghost) {
+            const dist = Math.hypot(sen.x - player.x, sen.y - player.y);
+            if (dist < player.r + sen.r) {
+                score = Math.max(0, score - 5);
+                setupLevel();
+                triggerSFX('error');
+            }
+        }
+
+        ctx.fillStyle = '#ef4444';
+        ctx.shadowColor = '#ef4444';
+        ctx.shadowBlur = 12;
+        ctx.beginPath();
+        ctx.arc(sen.x, sen.y, sen.r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        ctx.strokeStyle = 'rgba(239, 68, 68, 0.15)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(sen.x, sen.y);
+        ctx.lineTo(player.x, player.y);
+        ctx.stroke();
+    });
+
+    ctx.fillStyle = '#22c55e';
+    ctx.shadowColor = '#22c55e';
+    ctx.shadowBlur = 15;
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, player.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    requestAnimationFrame(loop);
+}
+loop();
+</script></body></html>`;
+
 export const MOCK_GAMES: Game[] = [
   { id: 'tiny-fishing', title: 'TINY FISHING', description: 'Catch neon fish in the deep phonk ocean.', thumbnail: 'https://images.unsplash.com/photo-1544551763-47a0159f9234?q=80&w=400', url: '', category: 'Arcade', tags: ['fishing', 'clicker'], isInternal: true, internalCode: TINY_FISHING_CODE },
   { id: 'phonk-rivals', title: 'PHONK RIVALS', description: 'Arena shooter. Dominate the grid.', thumbnail: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?q=80&w=400', url: '', category: 'Action', tags: ['shooter'], isInternal: true, internalCode: PHONK_RIVALS_CODE },
   { id: 'drift-king', title: 'DRIFT KING', description: 'Top-down neon drift simulator.', thumbnail: 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?q=80&w=400', url: '', category: 'Arcade', tags: ['drift'], isInternal: true, internalCode: DRIFT_KING_CODE },
-  { id: 'neon-breaker', title: 'NEON BREAKER', description: 'Classic block breaker, neon style.', thumbnail: 'https://images.unsplash.com/photo-1614850523296-d8c1af93d400?q=80&w=400', url: '', category: 'Arcade', tags: ['classic'], isInternal: true, internalCode: NEON_BREAKER_CODE },
+  { id: 'neon-breaker', title: 'NEON BREAKER', description: 'Classic block breaker, neon style.', thumbnail: 'https://images.unsplash.com/photo-1614850523296-d8c1af93d400?q=80&w=400', url: '', category: 'Classic', tags: ['classic'], isInternal: true, internalCode: NEON_BREAKER_CODE },
   { id: 'phonk-boxing', title: 'PHONK BOXING', description: '1v1 physics fighting.', thumbnail: 'https://images.unsplash.com/photo-1549719386-74dfcbf7dbed?q=80&w=400', url: '', category: 'Action', tags: ['boxing'], isInternal: true, internalCode: PHONK_BOXING_CODE },
   { id: 'cyber-bowl', title: 'CYBER BOWL', description: 'Neon physics bowling.', thumbnail: 'https://images.unsplash.com/photo-1538510166362-dfb83f5b9743?q=80&w=400', url: '', category: 'Arcade', tags: ['sports'], isInternal: true, internalCode: CYBER_BOWL_CODE },
   { id: 'phonk-tetris', title: 'PHONK TETRIS', description: 'Block stacking madness.', thumbnail: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?q=80&w=400', url: '', category: 'Puzzle', tags: ['puzzle'], isInternal: true, internalCode: PHONK_TETRIS_CODE },
   { id: 'phonk-mines', title: 'PHONK MINES', description: 'Neon minesweeper clone.', thumbnail: 'https://images.unsplash.com/photo-1511512578047-dfb367046420?q=80&w=400', url: '', category: 'Puzzle', tags: ['puzzle'], isInternal: true, internalCode: PHONK_MINES_CODE },
-  { id: 'phonk-moto', title: 'PHONK MOTO X', description: 'Physics bike stunts.', thumbnail: 'https://images.unsplash.com/photo-1558981403-c5f91cbba527?q=80&w=400', url: '', category: 'Arcade', tags: ['bike'], isInternal: true, internalCode: PHONK_MOTO_CODE }
+  { id: 'phonk-moto', title: 'PHONK MOTO X', description: 'Physics bike stunts.', thumbnail: 'https://images.unsplash.com/photo-1558981403-c5f91cbba527?q=80&w=400', url: '', category: 'Arcade', tags: ['bike'], isInternal: true, internalCode: PHONK_MOTO_CODE },
+  { id: 'phonk-runner', title: 'PHONK RUNNER', description: 'Infinite neon obstacle jump auto-runner.', thumbnail: 'https://images.unsplash.com/photo-1518770660439-4636190af475?q=80&w=400', url: '', category: 'Arcade', tags: ['runner', 'jump'], isInternal: true, internalCode: PHONK_RUNNER_CODE },
+  { id: 'synthwave-invaders', title: 'SYNTH INVADERS', description: 'Retro vertically scrolling space shooter.', thumbnail: 'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?q=80&w=400', url: '', category: 'Action', tags: ['space', 'shooter'], isInternal: true, internalCode: SYNTHWAVE_INVADERS_CODE },
+  { id: 'cyber-escape', title: 'CYBER ESCAPE', description: 'Top-down puzzle security maze runner.', thumbnail: 'https://images.unsplash.com/photo-1558494949-ef010cbdcc31?q=80&w=400', url: '', category: 'Puzzle', tags: ['maze', 'security'], isInternal: true, internalCode: CYBER_ESCAPE_CODE }
 ];
 
 export const CATEGORIES = ['All', 'Classic', 'Action', 'Puzzle', 'Arcade', 'AI-Gen'];
@@ -532,5 +1046,25 @@ export const MOD_CONFIGS: Record<string, any[]> = {
   'phonk-moto': [
     { key: 'deviceMode', label: 'MOBILE_LINK', type: 'select', options: ['pc', 'mobile'] },
     { key: 'gravity', label: 'GRAVITY_MOD', type: 'range', min: 0.1, max: 2, step: 0.1 }
+  ],
+  'phonk-runner': [
+    { key: 'deviceMode', label: 'MOBILE_LINK', type: 'select', options: ['pc', 'mobile'] },
+    { key: 'infiniteJumps', label: 'INFINITY_JUMP', type: 'toggle' },
+    { key: 'jumpStrength', label: 'JUMP_FORCE', type: 'range', min: 5, max: 20, step: 1 },
+    { key: 'speedHack', label: 'TIME_DILATION', type: 'range', min: 0.2, max: 3, step: 0.1 },
+    { key: 'invincible', label: 'GOD_MODE', type: 'toggle' }
+  ],
+  'synthwave-invaders': [
+    { key: 'deviceMode', label: 'MOBILE_LINK', type: 'select', options: ['pc', 'mobile'] },
+    { key: 'tripleShot', label: 'TRIPLE_LAUNCH', type: 'toggle' },
+    { key: 'bulletSize', label: 'PLASMA_GIGA', type: 'range', min: 1, max: 8, step: 1 },
+    { key: 'bulletSpeed', label: 'BURST_SPEED', type: 'range', min: 4, max: 25, step: 1 },
+    { key: 'invincible', label: 'SHIELD_REGEN', type: 'toggle' }
+  ],
+  'cyber-escape': [
+    { key: 'deviceMode', label: 'MOBILE_LINK', type: 'select', options: ['pc', 'mobile'] },
+    { key: 'slowMo', label: 'SENTRY_LAG', type: 'toggle' },
+    { key: 'ghostMode', label: 'PHASE_SHIFT', type: 'toggle' },
+    { key: 'revealMines', label: 'SONAR_PING', type: 'toggle' }
   ]
 };
