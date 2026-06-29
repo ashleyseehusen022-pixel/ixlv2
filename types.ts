@@ -45,3 +45,16 @@ export enum Page {
   Premium = 'premium',
   PermitShop = 'permitshop'
 }
+
+export interface GameSessionStats {
+  playCount: number;
+  playTimeSeconds: number;
+  successCount: number;
+  failureCount: number;
+  highScore: number;
+}
+
+export interface GlobalGameStats {
+  [gameId: string]: GameSessionStats;
+}
+

@@ -9,7 +9,8 @@ import { AdminConsole } from './components/AdminConsole';
 import { PremiumModal } from './components/PremiumModal';
 import { DeployPortal } from './components/DeployPortal';
 import { PermitShop } from './components/PermitShop';
-import { Game, Page } from './types';
+import { StatsDashboard } from './components/StatsDashboard';
+import { Game, Page, GlobalGameStats } from './types';
 import { MOCK_GAMES, MOD_CONFIGS } from './constants';
 import { audio } from './services/audioService';
 import { downloadProjectZip } from './services/exportService';
@@ -525,6 +526,155 @@ export const App: React.FC = () => {
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
+  const [gameStats, setGameStats] = useState<GlobalGameStats>(() => {
+    try {
+      const stored = localStorage.getItem('phonk_game_stats_telemetry');
+      return stored ? JSON.parse(stored) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const sessionScoreRef = useRef<number>(0);
+
+  const updateGameStats = (updater: (prev: GlobalGameStats) => GlobalGameStats) => {
+    setGameStats(prev => {
+      const next = updater(prev);
+      try {
+        localStorage.setItem('phonk_game_stats_telemetry', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  const resetGameStats = () => {
+    setGameStats({});
+    try {
+      localStorage.removeItem('phonk_game_stats_telemetry');
+    } catch {}
+  };
+
+  // Real-time play time and session count tracking
+  useEffect(() => {
+    if (!activeGame || currentPage !== Page.Play) return;
+
+    // Reset session points tracking
+    sessionScoreRef.current = 0;
+
+    // Record session start (increment playCount)
+    updateGameStats(prev => {
+      const gameStat = prev[activeGame.id] || {
+        playCount: 0,
+        playTimeSeconds: 0,
+        successCount: 0,
+        failureCount: 0,
+        highScore: 0
+      };
+      return {
+        ...prev,
+        [activeGame.id]: {
+          ...gameStat,
+          playCount: gameStat.playCount + 1
+        }
+      };
+    });
+
+    // Tick play time every second
+    const interval = setInterval(() => {
+      updateGameStats(prev => {
+        const gameStat = prev[activeGame.id] || {
+          playCount: 1,
+          playTimeSeconds: 0,
+          successCount: 0,
+          failureCount: 0,
+          highScore: 0
+        };
+        return {
+          ...prev,
+          [activeGame.id]: {
+            ...gameStat,
+            playTimeSeconds: gameStat.playTimeSeconds + 1
+          }
+        };
+      });
+    }, 1000);
+
+    return () => {
+      clearInterval(interval);
+    };
+  }, [activeGame, currentPage]);
+
+  // Intercept events from the game iframe to compute success rates and high scores
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      const data = event.data;
+      if (!data || !activeGame) return;
+
+      if (data.type === 'SFX_TRIGGER') {
+        if (data.sound === 'success') {
+          updateGameStats(prev => {
+            const gameStat = prev[activeGame.id] || {
+              playCount: 1,
+              playTimeSeconds: 0,
+              successCount: 0,
+              failureCount: 0,
+              highScore: 0
+            };
+            return {
+              ...prev,
+              [activeGame.id]: {
+                ...gameStat,
+                successCount: gameStat.successCount + 1
+              }
+            };
+          });
+        } else if (data.sound === 'score') {
+          sessionScoreRef.current += 1;
+          const currentScore = sessionScoreRef.current;
+          updateGameStats(prev => {
+            const gameStat = prev[activeGame.id] || {
+              playCount: 1,
+              playTimeSeconds: 0,
+              successCount: 0,
+              failureCount: 0,
+              highScore: 0
+            };
+            return {
+              ...prev,
+              [activeGame.id]: {
+                ...gameStat,
+                successCount: gameStat.successCount + 1,
+                highScore: Math.max(gameStat.highScore, currentScore)
+              }
+            };
+          });
+        } else if (data.sound === 'error') {
+          updateGameStats(prev => {
+            const gameStat = prev[activeGame.id] || {
+              playCount: 1,
+              playTimeSeconds: 0,
+              successCount: 0,
+              failureCount: 0,
+              highScore: 0
+            };
+            return {
+              ...prev,
+              [activeGame.id]: {
+                ...gameStat,
+                failureCount: gameStat.failureCount + 1
+              }
+            };
+          });
+        }
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => {
+      window.removeEventListener('message', handleMessage);
+    };
+  }, [activeGame]);
+
   useEffect(() => {
     try {
       if (settings.glitchEffects) {
@@ -731,10 +881,16 @@ export const App: React.FC = () => {
         )}
 
         {currentPage === Page.Library && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 animate-fadeIn">
-            {MOCK_GAMES.map(game => (
-              <GameCard key={game.id} game={game} onPlay={handlePlay} settings={settings} onSettingChange={updateSetting} isDevMode={isDevMode} isPremium={isPremium} />
-            ))}
+          <div className="space-y-8 animate-fadeIn">
+            {/* Game Statistics Dashboard */}
+            <StatsDashboard games={MOCK_GAMES} stats={gameStats} onResetStats={resetGameStats} />
+
+            {/* Games Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              {MOCK_GAMES.map(game => (
+                <GameCard key={game.id} game={game} onPlay={handlePlay} settings={settings} onSettingChange={updateSetting} isDevMode={isDevMode} isPremium={isPremium} />
+              ))}
+            </div>
           </div>
         )}
 
